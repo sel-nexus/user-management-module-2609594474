@@ -10,5 +10,7 @@ public interface IUserRepository
     Task<UserListResponse> ListAsync(UserListQuery query, CancellationToken ct);
     Task InsertAsync(UserDocument user, CancellationToken ct);
     Task<UserDocument?> UpdateAsync(ObjectId id, IReadOnlyDictionary<string, string?> changes, CancellationToken ct);
+    Task<UserDocument?> UpdateProfileAsync(ObjectId id, string role, IReadOnlyDictionary<string, string?> changes, CancellationToken ct);
+    Task<bool> ChangePasswordAsync(ObjectId id, string role, string expectedHash, string newHash, CancellationToken ct);
     Task<UserDocument?> DeactivateAsync(ObjectId id, CancellationToken ct);
 }

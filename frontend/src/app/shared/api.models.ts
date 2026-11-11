@@ -5,3 +5,7 @@ export interface ApiProblem { status: number; code: string; title: string; detai
 export interface CreateUserRequest { username: string; password: string; address?: string; city?: string; country?: string; education?: string; }
 /** Omission preserves values; null clears optional text. */
 export interface UpdateUserRequest { username?: string; address?: string | null; city?: string | null; country?: string | null; education?: string | null; }
+
+/** Own profile accepts no username, role, activity or identity. */
+export interface UpdateProfileRequest { address?: string | null; city?: string | null; country?: string | null; education?: string | null; }
+export interface ChangePasswordRequest { current_password: string; new_password: string; }

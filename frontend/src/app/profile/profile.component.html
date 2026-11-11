@@ -1,0 +1,34 @@
+<section class="profile">
+  <a routerLink="/session">Back to session</a>
+  <p class="eyebrow">Your account</p><h1>My profile</h1>
+  <p class="muted">Manage your own contact and education details. Your username and access role cannot be changed here.</p>
+  @if (loading) { <p role="status" aria-live="polite">Loading profile…</p> }
+  <app-feedback [message]="error" [error]="true" />
+  <app-feedback [message]="message" />
+  @if (!loading && !user && !missing) { <button type="button" (click)="load()">Retry</button> }
+  @if (user) {
+    <dl><dt>Username</dt><dd data-testid="profile-username">{{ user.username }}</dd><dt>Access role</dt><dd>{{ user.role }}</dd><dt>Updated (UTC)</dt><dd>{{ user.updated_at | date:'medium':'UTC' }}</dd></dl>
+    @if (!user.address && !user.city && !user.country && !user.education) { <p class="muted" data-testid="profile-empty">No profile details yet. Add optional details below.</p> }
+    <form [formGroup]="form" (ngSubmit)="save()" [attr.aria-busy]="pending === 'profile'" aria-labelledby="profile-edit-heading">
+      <h2 id="profile-edit-heading">Profile details</h2><div class="fields">
+      @for (field of fields; track field) {
+        <div><label [for]="'profile-' + field">{{ field | titlecase }}</label>
+          <input [id]="'profile-' + field" [formControlName]="field" [attr.maxlength]="field === 'address' ? 256 : 100" [attr.autocomplete]="field === 'address' ? 'street-address' : field === 'city' ? 'address-level2' : field === 'country' ? 'country-name' : 'off'" [attr.aria-invalid]="form.controls[field].touched && form.controls[field].invalid" [attr.aria-describedby]="'profile-' + field + '-help'">
+          <p class="field-help" [id]="'profile-' + field + '-help'" [class.error]="form.controls[field].touched && form.controls[field].invalid" [attr.role]="form.controls[field].touched && form.controls[field].invalid ? 'alert' : null">@if (form.controls[field].touched && form.controls[field].invalid) { Use at most {{ field === 'address' ? 256 : 100 }} characters. } @else { Optional · up to {{ field === 'address' ? 256 : 100 }} characters. Leave blank to clear. }</p>
+        </div>
+      }</div>
+      <div class="actions"><button class="primary" type="submit" [disabled]="!!pending">{{ pending === 'profile' ? 'Saving…' : 'Save profile' }}</button><button type="button" [disabled]="!!pending" (click)="cancel()">Cancel edits</button></div>
+    </form>
+    <section class="password" aria-labelledby="password-heading"><h2 id="password-heading">Change password</h2><p class="muted">Enter your current password to confirm this change. Passwords must be 12–72 UTF-8 bytes; non-ASCII characters may use more than one byte.</p>
+      <app-feedback [message]="passwordError" [error]="true" /><app-feedback [message]="passwordMessage" />
+      <form [formGroup]="passwordForm" (ngSubmit)="changePassword()" [attr.aria-busy]="pending === 'password'" aria-labelledby="password-heading">
+        @for (field of passwordFields; track field) {
+          <label [for]="'profile-' + field">{{ field === 'current_password' ? 'Current password (required)' : 'New password (required)' }}</label>
+          <input [id]="'profile-' + field" type="password" [formControlName]="field" aria-required="true" [attr.autocomplete]="field === 'current_password' ? 'current-password' : 'new-password'" [attr.aria-invalid]="passwordForm.controls[field].touched && passwordForm.controls[field].invalid" [attr.aria-describedby]="'profile-' + field + '-help'">
+          <p class="field-help" [id]="'profile-' + field + '-help'" [class.error]="passwordForm.controls[field].touched && passwordForm.controls[field].invalid" [attr.role]="passwordForm.controls[field].touched && passwordForm.controls[field].invalid ? 'alert' : null">@if (passwordForm.controls[field].touched && passwordForm.controls[field].invalid) { Enter 12–72 UTF-8 bytes. } @else { Required · 12–72 UTF-8 bytes. }</p>
+        }
+        <button type="submit" [disabled]="!!pending">{{ pending === 'password' ? 'Changing…' : 'Change password' }}</button>
+      </form>
+    </section>
+  }
+</section>

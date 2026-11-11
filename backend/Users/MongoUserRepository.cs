@@ -61,6 +61,30 @@ public sealed class MongoUserRepository(MongoContext context) : IUserRepository
         catch (MongoCommandException e) when (e.Code == 11000)
         { throw new ApiException(409, "duplicate_username", "Username is already in use."); }
     }
+    // Filter active identity and role in the same atomic write, without touching credentials.
+    public async Task<UserDocument?> UpdateProfileAsync(ObjectId id, string role, IReadOnlyDictionary<string, string?> changes, CancellationToken ct)
+    {
+        var filter = Builders<UserDocument>.Filter.Where(x => x.Id == id && x.IsActive && x.Role == role);
+        if (changes.Count == 0) return await context.Users.Find(filter).FirstOrDefaultAsync(ct);
+        var u = Builders<UserDocument>.Update;
+        var updates = new List<UpdateDefinition<UserDocument>> { u.Set(x => x.UpdatedAt, DateTime.UtcNow) };
+        foreach (var (name, value) in changes)
+            updates.Add(name switch
+            {
+                "address" => u.Set(x => x.Address, value), "city" => u.Set(x => x.City, value),
+                "country" => u.Set(x => x.Country, value), "education" => u.Set(x => x.Education, value),
+                _ => throw new ApiException(400, "validation_error", "Unknown profile field.")
+            });
+        return await context.Users.FindOneAndUpdateAsync(filter, u.Combine(updates),
+            new FindOneAndUpdateOptions<UserDocument> { ReturnDocument = ReturnDocument.After }, ct);
+    }
+    // Only the still-active account with the verified current hash can win this update.
+    public async Task<bool> ChangePasswordAsync(ObjectId id, string role, string expectedHash, string newHash, CancellationToken ct)
+    {
+        var result = await context.Users.UpdateOneAsync(x => x.Id == id && x.IsActive && x.Role == role && x.PasswordHash == expectedHash,
+            Builders<UserDocument>.Update.Set(x => x.PasswordHash, newHash).Set(x => x.UpdatedAt, DateTime.UtcNow), cancellationToken: ct);
+        return result.ModifiedCount == 1;
+    }
     // Change activity once without replacing credentials/profile or moving repeat-delete timestamps.
     public async Task<UserDocument?> DeactivateAsync(ObjectId id, CancellationToken ct)
     {

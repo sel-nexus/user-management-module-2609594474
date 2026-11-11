@@ -1,6 +1,6 @@
 <a class="skip-link" href="#main">Skip to content</a>
-<header><a class="brand" routerLink="/">User register</a><nav aria-label="Main navigation">
-  @if (auth.session()) { @if (auth.session()?.user?.role === 'Admin') { <a routerLink="/users" routerLinkActive="active" ariaCurrentWhenActive="page">Users</a> } <a routerLink="/session" routerLinkActive="active" ariaCurrentWhenActive="page">Session</a><button type="button" (click)="auth.logout()">Sign out</button> }
+<header style="flex-wrap:wrap"><a class="brand" routerLink="/">User register</a><nav aria-label="Main navigation" style="flex-wrap:wrap">
+  @if (auth.session()) { @if (auth.session()?.user?.role === 'Admin') { <a routerLink="/users" routerLinkActive="active" ariaCurrentWhenActive="page">Users</a> } <a routerLink="/profile" routerLinkActive="active" ariaCurrentWhenActive="page">Profile</a><a routerLink="/session" routerLinkActive="active" ariaCurrentWhenActive="page">Session</a><button type="button" (click)="auth.logout()">Sign out</button> }
   @else { <a routerLink="/login" routerLinkActive="active" ariaCurrentWhenActive="page">Sign in</a> }
 </nav></header>
 <main id="main" tabindex="-1"><router-outlet /></main>
