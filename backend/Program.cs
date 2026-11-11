@@ -18,6 +18,7 @@ builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<AuthenticationService>();
 builder.Services.AddSingleton<UserLifecycleService>();
+builder.Services.AddSingleton<UserManagement.Api.Discovery.DiscoveryService>();
 builder.Services.AddScoped<ActivePrincipalValidator>();
 builder.Services.AddSingleton<DatabaseSetup>();
 builder.Services.AddControllers().AddJsonOptions(o =>

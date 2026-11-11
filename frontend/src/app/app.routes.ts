@@ -7,5 +7,6 @@ export const routes: Routes = [
   { path: 'forgot-password', loadComponent: () => import('./auth/forgot-password.component').then(m => m.ForgotPasswordComponent) },
   { path: 'session', canActivate: [authGuard], loadComponent: () => import('./auth/session.component').then(m => m.SessionComponent) },
   { path: 'users/create', canActivate: [authGuard], data: { admin: true }, loadComponent: () => import('./users/create-user.component').then(m => m.CreateUserComponent) },
+  { path: 'users', canActivate: [authGuard], data: { admin: true }, loadComponent: () => import('./users/user-grid.component').then(m => m.UserGridComponent) },
   { path: '**', redirectTo: '' }
 ];
