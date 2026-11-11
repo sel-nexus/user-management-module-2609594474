@@ -8,5 +8,6 @@ export const routes: Routes = [
   { path: 'session', canActivate: [authGuard], loadComponent: () => import('./auth/session.component').then(m => m.SessionComponent) },
   { path: 'users/create', canActivate: [authGuard], data: { admin: true }, loadComponent: () => import('./users/create-user.component').then(m => m.CreateUserComponent) },
   { path: 'users', canActivate: [authGuard], data: { admin: true }, loadComponent: () => import('./users/user-grid.component').then(m => m.UserGridComponent) },
+  { path: 'users/:id', title: 'Account details · User register', canActivate: [authGuard], data: { admin: true }, loadComponent: () => import('./users/user-detail.component').then(m => m.UserDetailComponent) },
   { path: '**', redirectTo: '' }
 ];

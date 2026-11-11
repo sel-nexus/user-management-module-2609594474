@@ -3,3 +3,5 @@ export interface UserRecord { id: string; username: string; role: 'Admin' | 'Use
 export interface LoginResponse { access_token: string; token_type: 'Bearer'; expires_at: string; user: UserRecord; }
 export interface ApiProblem { status: number; code: string; title: string; detail: string; traceId: string; errors?: Record<string, string[]>; }
 export interface CreateUserRequest { username: string; password: string; address?: string; city?: string; country?: string; education?: string; }
+/** Omission preserves values; null clears optional text. */
+export interface UpdateUserRequest { username?: string; address?: string | null; city?: string | null; country?: string | null; education?: string | null; }

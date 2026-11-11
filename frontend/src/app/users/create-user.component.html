@@ -31,6 +31,7 @@
     <div class="result" role="status" aria-live="polite"><p>Account created for {{ created.username }}.</p>
       <dl><dt>Account ID</dt><dd>{{ created.id }}</dd><dt>Access role</dt><dd>{{ created.role }}</dd><dt>Account status</dt><dd>{{ created.is_active ? 'Active' : 'Inactive' }}</dd></dl>
       <p class="muted">You can create another account using the form above.</p>
+      <a [routerLink]="['/users', created.id]">View created account</a>
     </div>
   }
 </section>

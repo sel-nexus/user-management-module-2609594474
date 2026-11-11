@@ -1,0 +1,32 @@
+<section class="detail" aria-labelledby="detail-title" [attr.aria-busy]="loading || pending">
+  <p class="eyebrow">Account administration</p><h1 id="detail-title">Account details</h1>
+  <div class="actions"><a routerLink="/users">Back to users</a><a routerLink="/session">Back to session</a></div>
+  @if (loading) { <p role="status">Loading account…</p> }
+  <app-feedback [message]="error" [error]="true" /><app-feedback [message]="message" />
+  @if (!loading && !user && !notFound) { <button type="button" (click)="load()" [disabled]="pending">Retry</button> }
+  @if (user; as account) {
+    <h2>{{ account.username }}</h2>
+    <dl><dt>Account ID</dt><dd>{{ account.id }}</dd><dt>Access role</dt><dd>{{ account.role }}</dd><dt>Account status</dt><dd data-testid="account-status">{{ account.is_active ? 'Active' : 'Inactive' }}</dd><dt>Created (UTC)</dt><dd>{{ account.created_at | date:'medium':'UTC' }}</dd><dt>Updated (UTC)</dt><dd>{{ account.updated_at | date:'medium':'UTC' }}</dd></dl>
+    <p class="muted">Edits use last-write-wins. Inactive records remain editable; editing does not restore sign-in access.</p>
+    <form [formGroup]="form" (ngSubmit)="save()" [attr.aria-busy]="pending" novalidate>
+      <div class="fields">
+        @for (field of fields; track field) {
+          <div><label [for]="'detail-' + field">{{ field === 'username' ? 'Username (required)' : field === 'address' ? 'Address' : field === 'city' ? 'City' : field === 'country' ? 'Country' : 'Education' }}</label>
+            <input [id]="'detail-' + field" [formControlName]="field" [attr.aria-required]="field === 'username' ? 'true' : null" [attr.autocomplete]="field === 'address' ? 'street-address' : field === 'city' ? 'address-level2' : field === 'country' ? 'country-name' : 'off'" [attr.aria-invalid]="form.controls[field].touched && form.controls[field].invalid" [attr.aria-describedby]="'detail-' + field + '-help'">
+            <p [id]="'detail-' + field + '-help'" class="field-help" [attr.role]="form.controls[field].touched && form.controls[field].invalid ? 'alert' : null">{{ field === 'username' ? 'Use 3–64 characters. End spaces and case are normalized.' : field === 'address' ? 'At most 256 characters.' : 'At most 100 characters.' }}</p>
+          </div>
+        }
+      </div>
+      <div class="actions"><button class="primary" type="submit" [disabled]="pending || confirming">{{ pending ? 'Saving…' : 'Save changes' }}</button><button type="button" (click)="cancelEdit()" [disabled]="pending">Cancel edits</button></div>
+    </form>
+    <section class="deactivation" aria-labelledby="deactivate-title"><h2 id="deactivate-title">Account access</h2>
+      @if (account.is_active) {
+        @if (confirming) {
+          <div aria-labelledby="confirm-title"><h3 id="confirm-title">Deactivate {{ account.username }}?</h3><p id="confirm-help">Sign-in will be blocked immediately. The account record and profile will be preserved.</p>
+            <div class="actions"><button type="button" (click)="deactivate()" [disabled]="pending" aria-describedby="confirm-help">Confirm deactivate</button><button type="button" (click)="cancelDeactivate()" [disabled]="pending">Cancel deactivation</button></div>
+          </div>
+        } @else { <button type="button" (click)="confirm()" [disabled]="pending">Deactivate account</button> }
+      } @else { <p>This account is inactive and cannot sign in.</p> }
+    </section>
+  }
+</section>

@@ -47,7 +47,7 @@ describe('User discovery grid', () => {
     expect(root.querySelectorAll('th[scope="col"]').length).toBe(6);
     expect(root.querySelector('th[aria-sort="ascending"] button')?.getAttribute('aria-label')).toBe('Sort by username');
     expect(root.querySelector('[role="region"]')?.getAttribute('tabindex')).toBe('0');
-    expect(root.querySelector('a')?.getAttribute('href')).toBe('/users/create'); expect(root.querySelector('a[href^="/users/000"]')).toBeNull();
+    expect(root.querySelector('a')?.getAttribute('href')).toBe('/users/create'); expect(root.querySelector(`a[href="/users/${user.id}"]`)?.textContent).toBe(user.username);
     for (const id of ['users-search', 'users-country', 'users-education', 'users-active', 'users-limit']) expect(root.querySelector(`label[for="${id}"]`)).not.toBeNull();
   });
   it('selects and deselects visible rows with indeterminate/select-all state and never sends bulk or export', () => {

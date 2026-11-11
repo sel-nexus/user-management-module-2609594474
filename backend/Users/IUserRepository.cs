@@ -9,4 +9,6 @@ public interface IUserRepository
     Task<UserDocument?> FindByIdAsync(ObjectId id, CancellationToken ct);
     Task<UserListResponse> ListAsync(UserListQuery query, CancellationToken ct);
     Task InsertAsync(UserDocument user, CancellationToken ct);
+    Task<UserDocument?> UpdateAsync(ObjectId id, IReadOnlyDictionary<string, string?> changes, CancellationToken ct);
+    Task<UserDocument?> DeactivateAsync(ObjectId id, CancellationToken ct);
 }

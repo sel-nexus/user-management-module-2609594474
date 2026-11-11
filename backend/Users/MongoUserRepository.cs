@@ -37,6 +37,38 @@ public sealed class MongoUserRepository(MongoContext context) : IUserRepository
             .Project(x => new UserResponse(x.Id.ToString(), x.Username, x.Role, x.IsActive, x.Address, x.City, x.Country, x.Education, x.CreatedAt, x.UpdatedAt)).ToListAsync(ct);
         return new UserListResponse(items, query.Limit, query.Skip, total);
     }
+    // Atomically update supplied approved fields only; return the winning last-write state.
+    public async Task<UserDocument?> UpdateAsync(ObjectId id, IReadOnlyDictionary<string, string?> changes, CancellationToken ct)
+    {
+        if (changes.Count == 0) return await FindByIdAsync(id, ct);
+        var u = Builders<UserDocument>.Update;
+        var updates = new List<UpdateDefinition<UserDocument>> { u.Set(x => x.UpdatedAt, DateTime.UtcNow) };
+        foreach (var (name, value) in changes)
+            updates.Add(name switch
+            {
+                "username" => u.Set(x => x.Username, value!), "address" => u.Set(x => x.Address, value),
+                "city" => u.Set(x => x.City, value), "country" => u.Set(x => x.Country, value),
+                "education" => u.Set(x => x.Education, value),
+                _ => throw new ApiException(400, "validation_error", "Unknown update field.")
+            });
+        try
+        {
+            return await context.Users.FindOneAndUpdateAsync(x => x.Id == id, u.Combine(updates),
+                new FindOneAndUpdateOptions<UserDocument> { ReturnDocument = ReturnDocument.After }, ct);
+        }
+        catch (MongoWriteException e) when (e.WriteError.Category == ServerErrorCategory.DuplicateKey)
+        { throw new ApiException(409, "duplicate_username", "Username is already in use."); }
+        catch (MongoCommandException e) when (e.Code == 11000)
+        { throw new ApiException(409, "duplicate_username", "Username is already in use."); }
+    }
+    // Change activity once without replacing credentials/profile or moving repeat-delete timestamps.
+    public async Task<UserDocument?> DeactivateAsync(ObjectId id, CancellationToken ct)
+    {
+        var changed = await context.Users.FindOneAndUpdateAsync(x => x.Id == id && x.IsActive,
+            Builders<UserDocument>.Update.Set(x => x.IsActive, false).Set(x => x.UpdatedAt, DateTime.UtcNow),
+            new FindOneAndUpdateOptions<UserDocument> { ReturnDocument = ReturnDocument.After }, ct);
+        return changed ?? await FindByIdAsync(id, ct);
+    }
     // Insert without overwriting an existing account; map unique-index conflicts safely.
     public async Task InsertAsync(UserDocument user, CancellationToken ct)
     {

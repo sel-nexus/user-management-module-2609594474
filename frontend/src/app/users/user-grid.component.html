@@ -10,7 +10,7 @@
     <p id="query-help" class="field-help" [attr.role]="form.invalid && form.touched ? 'alert' : null">Search is literal and case-insensitive. Country and education must match exactly. Maximum 100 characters per text field.</p>
   </form>
   <div class="toolbar"><span>{{ selected().size }} selected on this page</span><div><button type="button" disabled aria-describedby="action-limits">Export</button> <button type="button" disabled aria-describedby="action-limits">Bulk actions</button></div></div>
-  <p id="action-limits" class="field-help">Export and bulk actions are not available. Account details will be available in a later release.</p>
+  <p id="action-limits" class="field-help">Export and bulk actions are not available. Open a username to manage that account.</p>
   <div [attr.aria-busy]="loading()" aria-live="polite">
     @if (loading()) { <p role="status">Loading accounts…</p> }
     @if (error()) { <p class="error" role="alert">{{ error() }}</p><button type="button" (click)="load()" [disabled]="error().startsWith('Invalid')">Retry</button> }
@@ -21,7 +21,7 @@
         <th scope="col">Activity</th>
       </tr></thead><tbody>
         @if (loading()) { @for (row of [1,2,3,4,5]; track row) { <tr aria-hidden="true">@for (cell of [1,2,3,4,5,6]; track cell) { <td><div class="skeleton"></div></td> }</tr> } }
-        @for (user of page()?.items ?? []; track user.id) { <tr><td><input type="checkbox" [attr.aria-label]="'Select ' + user.username" [checked]="selected().has(user.id)" (change)="toggle(user.id)"></td><td>{{ user.username }}</td><td>{{ user.city ?? '—' }}</td><td>{{ user.country ?? '—' }}</td><td>{{ user.education ?? '—' }}</td><td>{{ user.is_active ? 'Active' : 'Inactive' }}</td></tr> }
+        @for (user of page()?.items ?? []; track user.id) { <tr><td><input type="checkbox" [attr.aria-label]="'Select ' + user.username" [checked]="selected().has(user.id)" (change)="toggle(user.id)"></td><td><a [routerLink]="['/users', user.id]">{{ user.username }}</a></td><td>{{ user.city ?? '—' }}</td><td>{{ user.country ?? '—' }}</td><td>{{ user.education ?? '—' }}</td><td>{{ user.is_active ? 'Active' : 'Inactive' }}</td></tr> }
       </tbody></table>
       @if (page() && page()!.items.length === 0) { <p class="empty" role="status">{{ page()!.total === 0 ? (query.search !== undefined || query.country !== undefined || query.education !== undefined || query.is_active !== undefined ? 'No accounts match these filters.' : 'No accounts yet. Create the first account.') : 'No accounts on this page. Return to the previous page.' }}</p> }
     </div>
