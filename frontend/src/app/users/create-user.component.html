@@ -1,0 +1,36 @@
+<section class="create-panel" aria-labelledby="create-title">
+  <p class="eyebrow">Account administration</p><h1 id="create-title">Create account</h1>
+  <p class="muted">New accounts have User access and are active immediately. Required fields are marked below.</p>
+  <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="pending" novalidate>
+    <fieldset><legend>Account credentials</legend><div class="fields">
+      <div><label for="create-username">Username (required)</label>
+        <input id="create-username" formControlName="username" autocomplete="off" aria-required="true" [attr.aria-invalid]="form.controls.username.touched && form.controls.username.invalid" aria-describedby="create-username-help">
+        <p id="create-username-help" class="field-help" [attr.role]="form.controls.username.touched && form.controls.username.invalid ? 'alert' : null">Use 3–64 characters. Spaces at the ends are removed; case is ignored.</p></div>
+      <div><label for="create-password">Password (required)</label>
+        <input id="create-password" type="password" formControlName="password" autocomplete="new-password" aria-required="true" [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid" aria-describedby="create-password-help">
+        <p id="create-password-help" class="field-help" [attr.role]="form.controls.password.touched && form.controls.password.invalid ? 'alert' : null">Use 12–72 UTF-8 bytes. Accented characters may use more than one byte.</p></div>
+    </div></fieldset>
+    <fieldset><legend>Profile information (optional)</legend><div class="fields">
+      <div><label for="create-address">Address</label>
+        <input id="create-address" formControlName="address" autocomplete="street-address" [attr.aria-invalid]="form.controls.address.touched && form.controls.address.invalid" aria-describedby="create-address-help">
+        <p id="create-address-help" class="field-help" [attr.role]="form.controls.address.touched && form.controls.address.invalid ? 'alert' : null">At most 256 characters.</p></div>
+      <div><label for="create-city">City</label>
+        <input id="create-city" formControlName="city" autocomplete="address-level2" [attr.aria-invalid]="form.controls.city.touched && form.controls.city.invalid" aria-describedby="create-city-help">
+        <p id="create-city-help" class="field-help" [attr.role]="form.controls.city.touched && form.controls.city.invalid ? 'alert' : null">At most 100 characters.</p></div>
+      <div><label for="create-country">Country</label>
+        <input id="create-country" formControlName="country" autocomplete="country-name" [attr.aria-invalid]="form.controls.country.touched && form.controls.country.invalid" aria-describedby="create-country-help">
+        <p id="create-country-help" class="field-help" [attr.role]="form.controls.country.touched && form.controls.country.invalid ? 'alert' : null">At most 100 characters.</p></div>
+      <div><label for="create-education">Education</label>
+        <input id="create-education" formControlName="education" autocomplete="off" [attr.aria-invalid]="form.controls.education.touched && form.controls.education.invalid" aria-describedby="create-education-help">
+        <p id="create-education-help" class="field-help" [attr.role]="form.controls.education.touched && form.controls.education.invalid ? 'alert' : null">At most 100 characters.</p></div>
+    </div></fieldset>
+    <app-feedback [message]="error" [error]="true" />
+    <div class="actions"><button class="primary" type="submit" [disabled]="pending">{{ pending ? 'Creating account…' : 'Create account' }}</button><a routerLink="/session">Back to session</a></div>
+  </form>
+  @if (created) {
+    <div class="result" role="status" aria-live="polite"><p>Account created for {{ created.username }}.</p>
+      <dl><dt>Account ID</dt><dd>{{ created.id }}</dd><dt>Access role</dt><dd>{{ created.role }}</dd><dt>Account status</dt><dd>{{ created.is_active ? 'Active' : 'Inactive' }}</dd></dl>
+      <p class="muted">You can create another account using the form above.</p>
+    </div>
+  }
+</section>

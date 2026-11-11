@@ -6,5 +6,6 @@ export const routes: Routes = [
   { path: 'login', loadComponent: () => import('./auth/login.component').then(m => m.LoginComponent) },
   { path: 'forgot-password', loadComponent: () => import('./auth/forgot-password.component').then(m => m.ForgotPasswordComponent) },
   { path: 'session', canActivate: [authGuard], loadComponent: () => import('./auth/session.component').then(m => m.SessionComponent) },
+  { path: 'users/create', canActivate: [authGuard], data: { admin: true }, loadComponent: () => import('./users/create-user.component').then(m => m.CreateUserComponent) },
   { path: '**', redirectTo: '' }
 ];

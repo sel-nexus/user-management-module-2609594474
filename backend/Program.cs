@@ -17,11 +17,13 @@ builder.Services.AddSingleton<IAuditWriter, AuditWriter>();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<AuthenticationService>();
+builder.Services.AddSingleton<UserLifecycleService>();
 builder.Services.AddScoped<ActivePrincipalValidator>();
 builder.Services.AddSingleton<DatabaseSetup>();
 builder.Services.AddControllers().AddJsonOptions(o =>
 {
     o.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+    o.JsonSerializerOptions.PropertyNameCaseInsensitive = false;
     o.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
 });
 builder.Services.Configure<ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = action =>
