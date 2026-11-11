@@ -13,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IUserRepository, MongoUserRepository>();
 builder.Services.AddSingleton<MongoLogRepository>();
+builder.Services.AddSingleton<AuditService>();
 builder.Services.AddSingleton<IAuditWriter, AuditWriter>();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<TokenService>();

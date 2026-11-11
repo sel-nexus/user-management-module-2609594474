@@ -1,0 +1,18 @@
+<section aria-labelledby="audit-heading">
+  <p class="eyebrow">Operation history</p><h1 id="audit-heading">Audit log</h1>
+  <p class="muted">Newest records first. Only identity and operation metadata are shown.</p>
+  <p class="field-help">Audit delivery is best-effort. Missing records do not prove that no operation occurred. Reviewing this page does not create an audit event.</p>
+  <div class="controls"><label for="audit-limit">Page size</label><select id="audit-limit" [formControl]="limit"><option [ngValue]="1">1</option><option [ngValue]="20">20</option><option [ngValue]="50">50</option><option [ngValue]="100">100</option>@if (![1,20,50,100].includes(query.limit)) { <option [ngValue]="query.limit">{{ query.limit }}</option> }</select><button type="button" (click)="apply()" [disabled]="loading()">Apply page size</button><button type="button" (click)="reset()">Reset pagination</button></div>
+  <div [attr.aria-busy]="loading()" aria-live="polite">
+    @if (loading()) { <p role="status">Loading audit records…</p> }
+    @if (error()) { <p class="error" role="alert">{{ error() }}</p><button type="button" (click)="load()" [disabled]="invalid()">Retry</button> }
+    <div class="table-scroll" role="region" aria-label="Audit records" tabindex="0">
+      <table><caption class="muted">Recorded operations · timestamps in UTC</caption><thead><tr><th scope="col" aria-sort="descending">Timestamp (UTC)</th><th scope="col">Action</th><th scope="col">Status</th><th scope="col">User identity</th><th scope="col">Record identity</th></tr></thead><tbody>
+        @if (loading()) { @for (row of [1,2,3,4,5]; track row) { <tr aria-hidden="true">@for (cell of [1,2,3,4,5]; track cell) { <td><div class="skeleton"></div></td> }</tr> } }
+        @for (record of page()?.items ?? []; track record.id) { <tr [attr.data-record-id]="record.id"><td><time [attr.datetime]="record.timestamp">{{ record.timestamp | date:'yyyy-MM-dd HH:mm:ss':'UTC' }}</time></td><td>{{ record.action }}</td><td>{{ record.status }}</td><td class="identity">{{ record.user_id ?? 'Not recorded' }}</td><td class="identity">{{ record.id }}</td></tr> }
+      </tbody></table>
+      @if (page() && !page()!.items.length) { <p class="empty" role="status">{{ page()!.total === 0 ? 'No audit records yet.' : 'No records on this page. Return to the previous page.' }}</p> }
+    </div>
+    @if (page(); as result) { <nav class="paging" aria-label="Audit pages"><button type="button" (click)="move(-1)" [disabled]="query.skip === 0 || loading()">Previous page</button><span role="status">{{ result.items.length ? result.skip + 1 : 0 }}–{{ result.items.length ? result.skip + result.items.length : 0 }} of {{ result.total }} records</span><button type="button" (click)="move(1)" [disabled]="query.skip + query.limit >= result.total || loading()">Next page</button></nav> }
+  </div><p><a routerLink="/session">Back to session</a></p>
+</section>

@@ -14,17 +14,23 @@ public sealed class AuthenticationService(IUserRepository users, PasswordHasher 
     // Normalize the username; use a dummy hash for missing accounts to reduce timing disclosure.
     public async Task<LoginResponse> LoginAsync(LoginRequest input, CancellationToken ct)
     {
+        // Rejected input is not a credential decision and must not produce an operation event.
         if (string.IsNullOrWhiteSpace(input.Username) || input.Username.Trim().Length is < 3 or > 64)
             throw new ApiException(400, "validation_error", "Username must be 3–64 characters.");
         passwords.Validate(input.Password);
-        var user = await users.FindByUsernameAsync(input.Username.Trim().ToLowerInvariant(), ct);
-        var verified = passwords.Verify(input.Password, user?.PasswordHash ?? dummyHash);
-        if (user is null || !verified || !user.IsActive || user.Role is not ("Admin" or "User"))
+        UserDocument? user = null;
+        LoginResponse result;
+        try
         {
-            await audit.WriteAsync(user?.Id, "login", "failure");
-            throw new ApiException(401, "invalid_credentials", "Username or password is incorrect.");
+            user = await users.FindByUsernameAsync(input.Username.Trim().ToLowerInvariant(), ct);
+            var verified = passwords.Verify(input.Password, user?.PasswordHash ?? dummyHash);
+            if (user is null || !verified || !user.IsActive || user.Role is not ("Admin" or "User"))
+                throw new ApiException(401, "invalid_credentials", "Username or password is incorrect.");
+            result = tokens.Issue(user);
         }
+        catch (Exception e) when (e is ApiException or MongoDB.Driver.MongoException or TimeoutException or OperationCanceledException)
+        { await audit.WriteAsync(user?.Id, "login", "failure"); throw; }
         await audit.WriteAsync(user.Id, "login", "success");
-        return tokens.Issue(user);
+        return result;
     }
 }

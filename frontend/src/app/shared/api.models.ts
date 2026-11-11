@@ -9,3 +9,8 @@ export interface UpdateUserRequest { username?: string; address?: string | null;
 /** Own profile accepts no username, role, activity or identity. */
 export interface UpdateProfileRequest { address?: string | null; city?: string | null; country?: string | null; education?: string | null; }
 export interface ChangePasswordRequest { current_password: string; new_password: string; }
+
+/** Audit review contains only safe operation metadata, never credentials or submitted profile text. */
+export interface AuditRecord { id: string; user_id?: string; action: string; status: string; timestamp: string; }
+export interface AuditPage { items: AuditRecord[]; limit: number; skip: number; total: number; }
+export interface AuditQuery { limit: number; skip: number; }

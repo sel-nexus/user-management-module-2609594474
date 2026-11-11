@@ -11,7 +11,8 @@ public sealed class MongoLogRepository(MongoContext context)
     public Task<List<LogDocument>> PageAsync(int limit, int skip, CancellationToken ct)
     {
         if (limit is < 1 or > 100 || skip < 0) throw new ApiException(400, "validation_error", "Invalid pagination.");
-        return context.Logs.Find(FilterDefinition<LogDocument>.Empty).SortByDescending(x => x.Timestamp).ThenByDescending(x => x.Id).Skip(skip).Limit(limit).ToListAsync(ct);
+        return context.Logs.Find(FilterDefinition<LogDocument>.Empty).SortByDescending(x => x.Timestamp).ThenByDescending(x => x.Id).Skip(skip).Limit(limit)
+            .Project<LogDocument>(Builders<LogDocument>.Projection.Include(x => x.Id).Include(x => x.UserId).Include(x => x.Action).Include(x => x.Status).Include(x => x.Timestamp)).ToListAsync(ct);
     }
     // Count events matching an optional time window and event kind in Mongo, not in memory.
     public Task<long> CountAsync(DateTime? since, string? action, string? status, CancellationToken ct)
