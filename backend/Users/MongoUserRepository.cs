@@ -8,6 +8,27 @@ namespace UserManagement.Api.Users;
 // Query typed scalar filters through the shared Mongo client; never accept client operators.
 public sealed class MongoUserRepository(MongoContext context) : IUserRepository
 {
+    // Reduce accounts in Mongo: a scalar population facet and country groups, never account materialization.
+    public async Task<UserManagement.Api.Dashboard.PopulationSummary> SummarizeAsync(CancellationToken ct)
+    {
+        var pipeline = new[] { BsonDocument.Parse("""
+        { "$facet": {
+          "population": [{ "$group": { "_id": null, "total": { "$sum": 1 },
+            "active": { "$sum": { "$cond": [{ "$eq": ["$is_active", true] }, 1, 0] } },
+            "inactive": { "$sum": { "$cond": [{ "$eq": ["$is_active", false] }, 1, 0] } } } }],
+          "countries": [
+            { "$project": { "country": { "$trim": { "input": { "$ifNull": ["$country", ""] } } } } },
+            { "$group": { "_id": { "$cond": [{ "$eq": ["$country", ""] }, "Unknown", "$country"] }, "count": { "$sum": 1 } } },
+            { "$sort": { "_id": 1 } }
+          ]
+        } }
+        """) };
+        var result = await context.Users.Aggregate<BsonDocument>(pipeline).SingleAsync(ct);
+        var population = result["population"].AsBsonArray;
+        var counts = population.Count == 0 ? null : population[0].AsBsonDocument;
+        var countries = result["countries"].AsBsonArray.Select(x => new UserManagement.Api.Dashboard.CountryCount(x["_id"].AsString, x["count"].ToInt64())).ToArray();
+        return new(counts?["total"].ToInt64() ?? 0, counts?["active"].ToInt64() ?? 0, counts?["inactive"].ToInt64() ?? 0, countries);
+    }
     // Find the normalized natural key.
     public Task<UserDocument?> FindByUsernameAsync(string username, CancellationToken ct) => context.Users.Find(x => x.Username == username).FirstOrDefaultAsync(ct)!;
     // Find an account by its persisted BSON identity.

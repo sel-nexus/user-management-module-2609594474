@@ -14,3 +14,11 @@ export interface ChangePasswordRequest { current_password: string; new_password:
 export interface AuditRecord { id: string; user_id?: string; action: string; status: string; timestamp: string; }
 export interface AuditPage { items: AuditRecord[]; limit: number; skip: number; total: number; }
 export interface AuditQuery { limit: number; skip: number; }
+
+/** Persisted population and inclusive seven-day recorded activity; no derived trends. */
+export interface DashboardSummary {
+  total: number; active: number; inactive: number;
+  country_distribution: { country: string; count: number }[];
+  login_success: number; login_failure: number; activity: number;
+  generated_at: string; window_start: string;
+}

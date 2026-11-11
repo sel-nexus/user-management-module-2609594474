@@ -7,6 +7,7 @@ public interface IUserRepository
 {
     Task<UserDocument?> FindByUsernameAsync(string username, CancellationToken ct);
     Task<UserDocument?> FindByIdAsync(ObjectId id, CancellationToken ct);
+    Task<UserManagement.Api.Dashboard.PopulationSummary> SummarizeAsync(CancellationToken ct);
     Task<UserListResponse> ListAsync(UserListQuery query, CancellationToken ct);
     Task InsertAsync(UserDocument user, CancellationToken ct);
     Task<UserDocument?> UpdateAsync(ObjectId id, IReadOnlyDictionary<string, string?> changes, CancellationToken ct);

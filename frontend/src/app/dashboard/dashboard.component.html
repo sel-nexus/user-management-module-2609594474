@@ -1,0 +1,29 @@
+<section aria-labelledby="dashboard-heading">
+  <p class="eyebrow">Register overview</p>
+  <div class="heading"><h1 id="dashboard-heading">Dashboard</h1><button type="button" (click)="load()" [disabled]="loading()">Refresh dashboard</button></div>
+  <p class="muted">Current account population and recorded activity for the preceding seven days.</p>
+  <div [attr.aria-busy]="loading()" aria-live="polite">
+    @if (loading()) { <p role="status">Loading dashboard…</p><div class="skeleton" aria-hidden="true"></div> }
+    @if (error()) { <p class="error" role="alert">{{ error() }}</p><button type="button" (click)="load()">Retry</button> }
+    @if (summary(); as data) {
+      <p class="freshness muted">Generated at <time data-testid="generated-at" [attr.datetime]="data.generated_at">{{ data.generated_at | date:'yyyy-MM-dd HH:mm:ss':'UTC' }}</time> UTC</p>
+      <section aria-labelledby="population-heading"><h2 id="population-heading">Account population</h2>
+        <dl class="metrics"><div><dt>Total accounts</dt><dd data-testid="total">{{ data.total }}</dd></div><div><dt>Active accounts</dt><dd data-testid="active">{{ data.active }}</dd></div><div><dt>Inactive accounts</dt><dd data-testid="inactive">{{ data.inactive }}</dd></div></dl>
+        @if (data.total === 0) { <p role="status">No accounts in the register yet.</p> }
+      </section>
+      <section aria-labelledby="country-heading"><h2 id="country-heading">Country distribution</h2><p class="field-help">All accounts, including inactive accounts. Missing or blank countries are grouped as Unknown.</p>
+        @if (data.country_distribution.length) {
+          <div class="table-scroll" role="region" aria-label="Country distribution" tabindex="0"><table><caption>Accounts by country</caption><thead><tr><th scope="col">Country</th><th scope="col">Accounts</th></tr></thead><tbody>
+            @for (entry of data.country_distribution; track entry.country) { <tr [attr.data-country]="entry.country"><td>{{ entry.country }}</td><td>{{ entry.count }}</td></tr> }
+          </tbody></table></div>
+        } @else { <p role="status">No country data yet.</p> }
+      </section>
+      <section aria-labelledby="activity-heading"><h2 id="activity-heading">Seven-day recorded activity</h2>
+        <p class="freshness muted">Window: <time data-testid="window-start" [attr.datetime]="data.window_start">{{ data.window_start | date:'yyyy-MM-dd HH:mm:ss':'UTC' }}</time> to <time [attr.datetime]="data.generated_at">{{ data.generated_at | date:'yyyy-MM-dd HH:mm:ss':'UTC' }}</time> UTC, inclusive.</p>
+        <dl class="metrics"><div><dt>All recorded events</dt><dd data-testid="activity">{{ data.activity }}</dd></div><div><dt>Successful logins</dt><dd data-testid="login-success">{{ data.login_success }}</dd></div><div><dt>Failed logins</dt><dd data-testid="login-failure">{{ data.login_failure }}</dd></div></dl>
+        @if (data.activity === 0) { <p role="status">No recorded activity in this window.</p> }
+        <p class="field-help">Audit delivery is best-effort. These are recorded events, not a guarantee that every operation was logged.</p>
+      </section>
+    }
+  </div><p><a routerLink="/session">Back to session</a></p>
+</section>

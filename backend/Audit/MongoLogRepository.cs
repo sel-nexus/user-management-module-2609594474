@@ -1,10 +1,31 @@
 using MongoDB.Driver;
+using MongoDB.Bson;
+using UserManagement.Api.Dashboard;
 using UserManagement.Api.Common;
 namespace UserManagement.Api.Audit;
 
 // Append and retrieve safe events through real Mongo storage, with bounded reads.
 public sealed class MongoLogRepository(MongoContext context)
 {
+    // Count all recorded activity and exact login outcomes within inclusive UTC bounds in Mongo.
+    public async Task<ActivitySummary> SummarizeAsync(DateTime start, DateTime end, CancellationToken ct)
+    {
+        // BSON dates have millisecond precision: ceil the lower bound so an older fraction is not included.
+        start = start.ToUniversalTime(); end = end.ToUniversalTime();
+        var remainder = start.Ticks % TimeSpan.TicksPerMillisecond;
+        if (remainder != 0) start = start.AddTicks(TimeSpan.TicksPerMillisecond - remainder);
+        var pipeline = new[] {
+            new BsonDocument("$match", new BsonDocument("timestamp", new BsonDocument { { "$type", "date" }, { "$gte", start }, { "$lte", end } })),
+            BsonDocument.Parse("""
+            { "$group": { "_id": null, "activity": { "$sum": 1 },
+              "login_success": { "$sum": { "$cond": [{ "$and": [{ "$eq": ["$action", "login"] }, { "$eq": ["$status", "success"] }] }, 1, 0] } },
+              "login_failure": { "$sum": { "$cond": [{ "$and": [{ "$eq": ["$action", "login"] }, { "$eq": ["$status", "failure"] }] }, 1, 0] } }
+            } }
+            """)
+        };
+        var result = await context.Logs.Aggregate<BsonDocument>(pipeline).SingleOrDefaultAsync(ct);
+        return result is null ? new(0, 0, 0) : new(result["login_success"].ToInt64(), result["login_failure"].ToInt64(), result["activity"].ToInt64());
+    }
     // Append one event without transactional promises about account operations.
     public Task AppendAsync(LogDocument log, CancellationToken ct) => context.Logs.InsertOneAsync(log, cancellationToken: ct);
     // Read a stable newest-first bounded page.

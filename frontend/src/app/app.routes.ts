@@ -11,5 +11,6 @@ export const routes: Routes = [
   { path: 'users/:id', title: 'Account details · User register', canActivate: [authGuard], data: { admin: true }, loadComponent: () => import('./users/user-detail.component').then(m => m.UserDetailComponent) },
   { path: 'profile', title: 'My profile · User register', canActivate: [authGuard], loadComponent: () => import('./profile/profile.component').then(m => m.ProfileComponent) },
   { path: 'audit', title: 'Audit log · User register', canActivate: [authGuard], data: { admin: true }, loadComponent: () => import('./audit/audit-log.component').then(m => m.AuditLogComponent) },
+  { path: 'dashboard', title: 'Dashboard · User register', canActivate: [authGuard], data: { admin: true }, loadComponent: () => import('./dashboard/dashboard.component').then(m => m.DashboardComponent) },
   { path: '**', redirectTo: '' }
 ];
