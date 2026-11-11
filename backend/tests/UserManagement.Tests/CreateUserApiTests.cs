@@ -36,7 +36,7 @@ public sealed class CreateUserApiTests : IAsyncLifetime
     [Fact]
     public async Task Admin_create_returns_201_location_safe_snake_case_and_real_persisted_account()
     {
-        using var client = await AdminClientAsync(); var before = DateTime.UtcNow;
+        using var client = await AdminClientAsync(); var before = UserDocument.CanonicalizeTimestamp(DateTime.UtcNow);
         var response = await client.PostAsJsonAsync("/api/users", new { username = " New-Account ", password = "Test-password-123!", address = "Example address", city = "Example city", country = "Example country", education = "Example education" });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var text = await response.Content.ReadAsStringAsync(); var body = JsonDocument.Parse(text).RootElement;
@@ -52,7 +52,19 @@ public sealed class CreateUserApiTests : IAsyncLifetime
         Assert.Equal("User", saved.Role); Assert.True(saved.IsActive); Assert.StartsWith("$2a$12$", saved.PasswordHash);
         Assert.True(app.Services.GetRequiredService<PasswordHasher>().Verify("Test-password-123!", saved.PasswordHash));
         Assert.DoesNotContain(saved.PasswordHash, text);
+        Assert.Equal(saved.CreatedAt, user.CreatedAt); Assert.Equal(saved.UpdatedAt, user.UpdatedAt);
+        Assert.Equal(DateTimeKind.Utc, user.UpdatedAt.Kind);
+        Assert.Equal(0L, user.CreatedAt.Ticks % TimeSpan.TicksPerMillisecond);
+        Assert.Equal(0L, user.UpdatedAt.Ticks % TimeSpan.TicksPerMillisecond);
         var log = await app.Mongo.Logs.Find(x => x.UserId == saved.Id).SingleAsync(); Assert.Equal("create_user", log.Action); Assert.Equal("success", log.Status);
+        using var get = await client.GetAsync(response.Headers.Location);
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        var retrievedText = await get.Content.ReadAsStringAsync();
+        var retrieved = JsonSerializer.Deserialize<UserResponse>(retrievedText, TestApp.Json)!;
+        Assert.Equal(user, retrieved);
+        var retrievedBody = JsonDocument.Parse(retrievedText).RootElement;
+        Assert.Equal(body.GetProperty("created_at").GetString(), retrievedBody.GetProperty("created_at").GetString());
+        Assert.Equal(body.GetProperty("updated_at").GetString(), retrievedBody.GetProperty("updated_at").GetString());
     }
 
     // Missing, null, wrong scalar/container types and both sides of every documented length bound.

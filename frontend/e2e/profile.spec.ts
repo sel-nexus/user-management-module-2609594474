@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { test, expect, adminPassword } from './fixtures';
 
 /** Real UI provisioning and own-password journey; inherited config runs desktop and mobile. */
-test('own profile persists across navigation and changed password rejects old login but accepts new', async ({ page, browserErrors }) => {
+test('own profile persists across navigation and changed password rejects old login but accepts new', async ({ page, browserErrors, expectedHttpError }) => {
   const username = `profile-${randomBytes(8).toString('hex')}`;
   const oldPassword = randomBytes(24).toString('base64url');
   const newPassword = randomBytes(24).toString('base64url');
@@ -46,20 +46,15 @@ test('own profile persists across navigation and changed password rejects old lo
   await page.getByRole('button', { name: 'Change password', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('Enter 12–72 UTF-8 bytes'); expect(changes).toEqual([]);
   await page.getByLabel('New password (required)', { exact: true }).fill(newPassword);
   await page.getByLabel('Current password (required)', { exact: true }).fill('Wrong-password-123!');
-  // Current-password denial uses the established 400 contract. Capture expected resource errors locally;
-  // the shared fixture still fails all unhandled runtime errors and unrelated console errors.
-  expect(browserErrors).toEqual([]);
-  const consoleErrors: string[] = [];
-  const capture = (message: import('@playwright/test').ConsoleMessage): void => { if (message.type() === 'error') consoleErrors.push(message.text()); };
-  page.on('console', capture);
-  const rejected = page.waitForResponse(r => new URL(r.url()).pathname === '/api/profile/password' && r.request().method() === 'POST');
-  await page.getByRole('button', { name: 'Change password', exact: true }).click(); const invalid = await rejected; expect(invalid.status()).toBe(400); expect((await invalid.json()).code).toBe('invalid_current_password');
-  await expect(page.getByRole('alert')).toContainText('Password change was rejected');
-  // The fixture classifies login 401s globally, but this explicitly asserted password 400 is local.
-  expect(browserErrors.length).toBeLessThanOrEqual(1);
-  expect(browserErrors).toEqual(consoleErrors);
-  for (const error of browserErrors) expect(error).toMatch(/^Failed to load resource: the server responded with a status of 400/);
-  browserErrors.splice(0, consoleErrors.length); page.off('console', capture);
+  await expectedHttpError({ path: '/api/profile/password', method: 'POST', status: 400 }, async () => {
+    const rejected = page.waitForResponse(r => new URL(r.url()).pathname === '/api/profile/password' && r.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Change password', exact: true }).click();
+    const invalid = await rejected;
+    expect(invalid.status()).toBe(400);
+    expect((await invalid.json()).code).toBe('invalid_current_password');
+    await expect(page.getByRole('alert')).toContainText('Password change was rejected');
+    return invalid;
+  });
   await expect(page.getByLabel('Current password (required)', { exact: true })).toHaveValue('');
   await page.getByLabel('Current password (required)', { exact: true }).fill(oldPassword); await page.getByLabel('New password (required)', { exact: true }).fill(newPassword);
   const passwordChange = page.waitForResponse(r => new URL(r.url()).pathname === '/api/profile/password' && r.request().method() === 'POST');
@@ -68,8 +63,13 @@ test('own profile persists across navigation and changed password rejects old lo
   await expect(page.getByRole('status')).toContainText('Password changed'); await expect(page.getByLabel('New password (required)', { exact: true })).toHaveValue(''); expect(changes).toEqual(['POST', 'POST']);
   await page.getByRole('button', { name: 'Sign out', exact: true }).first().click();
   await page.getByLabel('Username', { exact: true }).fill(username); await page.getByLabel('Password', { exact: true }).fill(oldPassword);
-  const oldLogin = page.waitForResponse(r => new URL(r.url()).pathname === '/api/login' && r.request().method() === 'POST');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click(); const old = await oldLogin; expect(old.status()).toBe(401); expect((await old.json()).code).toBe('invalid_credentials'); await expect(page.getByRole('alert')).toContainText('Username or password is incorrect');
+  await expectedHttpError({ path: '/api/login', method: 'POST', status: 401 }, async () => {
+    const oldLogin = page.waitForResponse(r => new URL(r.url()).pathname === '/api/login' && r.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const old = await oldLogin; expect(old.status()).toBe(401); expect((await old.json()).code).toBe('invalid_credentials');
+    await expect(page.getByRole('alert')).toContainText('Username or password is incorrect');
+    return old;
+  });
   await page.getByLabel('Password', { exact: true }).fill(newPassword);
   const newLogin = page.waitForResponse(r => new URL(r.url()).pathname === '/api/login' && r.request().method() === 'POST');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click(); const fresh = await newLogin; expect(fresh.status()).toBe(200); expect((await fresh.json()).user.id).toBe(account.id);

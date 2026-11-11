@@ -20,7 +20,7 @@ public sealed class CreateUserTests : IAsyncLifetime
     [Fact]
     public async Task Create_normalizes_persists_bcrypt_defaults_UTC_and_safe_audit()
     {
-        var before = DateTime.UtcNow;
+        var before = UserDocument.CanonicalizeTimestamp(DateTime.UtcNow);
         var result = await app.Services.GetRequiredService<UserLifecycleService>().CreateAsync(new CreateUserRequest(" Fresh-Account ", "Test-password-123!", "Example address", "Example city", "Example country", "Example education"), default);
         var saved = await app.Mongo.Users.Find(x => x.Id == ObjectId.Parse(result.Id)).SingleAsync();
         Assert.Equal("fresh-account", saved.Username); Assert.Equal(saved.Username, result.Username);
@@ -31,10 +31,40 @@ public sealed class CreateUserTests : IAsyncLifetime
         Assert.Equal(saved.Address, result.Address); Assert.Equal(saved.City, result.City); Assert.Equal(saved.Country, result.Country); Assert.Equal(saved.Education, result.Education);
         Assert.Equal(DateTimeKind.Utc, saved.CreatedAt.Kind); Assert.Equal(DateTimeKind.Utc, saved.UpdatedAt.Kind);
         Assert.InRange(result.CreatedAt, before, DateTime.UtcNow); Assert.Equal(result.CreatedAt, result.UpdatedAt);
-        Assert.InRange((result.CreatedAt - saved.CreatedAt).TotalMilliseconds, 0, 1);
+        Assert.Equal(saved.CreatedAt, result.CreatedAt); Assert.Equal(saved.UpdatedAt, result.UpdatedAt);
+        Assert.Equal(DateTimeKind.Utc, result.CreatedAt.Kind); Assert.Equal(DateTimeKind.Utc, result.UpdatedAt.Kind);
+        Assert.Equal(0L, result.CreatedAt.Ticks % TimeSpan.TicksPerMillisecond);
+        Assert.Equal(0L, result.UpdatedAt.Ticks % TimeSpan.TicksPerMillisecond);
         var log = await app.Mongo.Logs.Find(x => x.UserId == saved.Id).SingleAsync();
         Assert.Equal("create_user", log.Action); Assert.Equal("success", log.Status);
         var bson = log.ToBsonDocument(); Assert.False(bson.Contains("password")); Assert.False(bson.Contains("password_hash")); Assert.False(bson.Contains("address"));
+        var retrieved = await app.Services.GetRequiredService<UserLifecycleService>().GetAsync(result.Id, default);
+        Assert.Equal(result, retrieved);
+    }
+
+    // Verify deterministic submillisecond inputs match the stored BSON instant and remain stable on reassignment.
+    [Theory]
+    [InlineData(false, false)] [InlineData(true, false)]
+    [InlineData(false, true)] [InlineData(true, true)]
+    public async Task User_timestamps_are_UTC_milliseconds_before_insert_and_idempotent_after_read(bool local, bool beforeEpoch)
+    {
+        var utc = beforeEpoch
+            ? DateTime.UnixEpoch.AddTicks(-12345)
+            : new DateTime(2025, 1, 2, 3, 4, 5, 241, DateTimeKind.Utc).AddTicks(6186);
+        var input = local ? utc.ToLocalTime() : utc;
+        var expected = new BsonDateTime(input).ToUniversalTime();
+        var user = new UserDocument { Username = "timestamp-account", CreatedAt = input, UpdatedAt = input };
+        Assert.Equal(expected, user.CreatedAt); Assert.Equal(expected, user.UpdatedAt);
+        Assert.Equal(DateTimeKind.Utc, user.CreatedAt.Kind); Assert.Equal(DateTimeKind.Utc, user.UpdatedAt.Kind);
+        Assert.Equal(0L, user.CreatedAt.Ticks % TimeSpan.TicksPerMillisecond);
+        Assert.Equal(0L, user.UpdatedAt.Ticks % TimeSpan.TicksPerMillisecond);
+        var response = UserResponse.From(user);
+        await app.Services.GetRequiredService<IUserRepository>().InsertAsync(user, default);
+        var saved = await app.Mongo.Users.Find(x => x.Id == user.Id).SingleAsync();
+        Assert.Equal(response, UserResponse.From(saved));
+        saved.CreatedAt = saved.CreatedAt; saved.UpdatedAt = saved.UpdatedAt;
+        Assert.Equal(response, UserResponse.From(saved));
+        Assert.Equal(DateTimeKind.Utc, saved.CreatedAt.Kind); Assert.Equal(DateTimeKind.Utc, saved.UpdatedAt.Kind);
     }
 
     [Theory]

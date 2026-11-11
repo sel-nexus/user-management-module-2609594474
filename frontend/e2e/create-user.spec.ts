@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { test, expect, adminPassword } from './fixtures';
 
 /** Prove real UI provisioning, persisted login and duplicate failure without mocks or direct route jumps. */
-test('Admin login → create → duplicate error → newly created User login', async ({ page, browserErrors }) => {
+test('Admin login → create → duplicate error → newly created User login', async ({ page, browserErrors, expectedHttpError }) => {
   const username = `created-${randomBytes(8).toString('hex')}`;
   const password = randomBytes(24).toString('base64url');
   await page.goto('/');
@@ -35,17 +35,16 @@ test('Admin login → create → duplicate error → newly created User login', 
 
   await page.getByLabel('Username (required)', { exact: true }).fill(username.toUpperCase());
   await page.getByLabel('Password (required)', { exact: true }).fill(password);
-  const duplicate = page.waitForResponse(response => response.url().endsWith('/api/users') && response.request().method() === 'POST');
-  await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  const rejected = await duplicate; expect(rejected.status()).toBe(409); const problem = await rejected.json();
-  expect(problem.code).toBe('duplicate_username'); expect(problem.traceId).toBeTruthy(); expect(JSON.stringify(problem)).not.toContain(password);
-  await expect(page.getByRole('alert')).toContainText('Username is already in use');
-  await expect(page.getByRole('status')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeEnabled();
-  // The shared fixture records resource errors. Classify only this proven 409, not application exceptions.
-  const resource409 = /^Failed to load resource: the server responded with a status of 409 \(Conflict\)$/;
-  await expect.poll(() => browserErrors.filter(error => resource409.test(error)).length).toBe(1);
-  browserErrors.splice(browserErrors.findIndex(error => resource409.test(error)), 1);
+  await expectedHttpError({ path: '/api/users', method: 'POST', status: 409 }, async () => {
+    const duplicate = page.waitForResponse(response => new URL(response.url()).pathname === '/api/users' && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Create account', exact: true }).click();
+    const rejected = await duplicate; expect(rejected.status()).toBe(409); const problem = await rejected.json();
+    expect(problem.code).toBe('duplicate_username'); expect(problem.traceId).toBeTruthy(); expect(JSON.stringify(problem)).not.toContain(password);
+    await expect(page.getByRole('alert')).toContainText('Username is already in use');
+    await expect(page.getByRole('status')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeEnabled();
+    return rejected;
+  });
   expect(browserErrors).toEqual([]);
 
   await page.getByRole('link', { name: 'Back to session' }).click();

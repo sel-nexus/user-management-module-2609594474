@@ -14,6 +14,12 @@ public sealed class UserDocument
     [BsonElement("city")] public string? City { get; set; }
     [BsonElement("country")] public string? Country { get; set; }
     [BsonElement("education")] public string? Education { get; set; }
-    [BsonElement("created_at")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    [BsonElement("updated_at")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    private DateTime createdAt = CanonicalizeTimestamp(DateTime.UtcNow);
+    private DateTime updatedAt = CanonicalizeTimestamp(DateTime.UtcNow);
+    [BsonElement("created_at")] public DateTime CreatedAt { get => createdAt; set => createdAt = CanonicalizeTimestamp(value); }
+    [BsonElement("updated_at")] public DateTime UpdatedAt { get => updatedAt; set => updatedAt = CanonicalizeTimestamp(value); }
+
+    // Match BSON's UTC epoch-millisecond representation before persistence or public projection.
+    public static DateTime CanonicalizeTimestamp(DateTime value) =>
+        BsonUtils.ToDateTimeFromMillisecondsSinceEpoch(BsonUtils.ToMillisecondsSinceEpoch(value));
 }

@@ -4,7 +4,7 @@ import { test, expect, adminPassword } from './fixtures';
 import { AuditPage, AuditRecord } from '../src/app/shared/api.models';
 
 /** Real operation-to-review journey, inherited desktop/mobile projects and browser-error fixture. */
-test('real login, account and profile operations match audit rows without events from reviewing or pagination', async ({ page, browserErrors }, testInfo) => {
+test('real login, account and profile operations match audit rows without events from reviewing or pagination', async ({ page, browserErrors, expectedHttpError }, testInfo) => {
   const username = `audit-${randomBytes(8).toString('hex')}`;
   const password = randomBytes(24).toString('base64url');
   const city = `Audit city ${randomBytes(4).toString('hex')}`;
@@ -14,14 +14,18 @@ test('real login, account and profile operations match audit rows without events
   await page.goto('/');
   await page.getByRole('link', { name: 'Go to sign in' }).click();
   await page.getByLabel('Username', { exact: true }).fill('e2e-admin'); await page.getByLabel('Password', { exact: true }).fill('Wrong-password-123!');
-  const deniedLogin = response('/api/login', 'POST'); await page.getByRole('button', { name: 'Sign in', exact: true }).click(); expect((await deniedLogin).status()).toBe(401);
-  await expect(page.getByRole('alert')).toContainText('Username or password is incorrect');
+  await expectedHttpError({ path: '/api/login', method: 'POST', status: 401 }, async () => {
+    const deniedLogin = response('/api/login', 'POST'); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const denied = await deniedLogin; expect(denied.status()).toBe(401); expect((await denied.json()).code).toBe('invalid_credentials');
+    await expect(page.getByRole('alert')).toContainText('Username or password is incorrect');
+    return denied;
+  });
   await page.getByLabel('Password', { exact: true }).fill(adminPassword());
   const login = response('/api/login', 'POST'); await page.getByRole('button', { name: 'Sign in', exact: true }).click(); const signedIn = await login; expect(signedIn.status()).toBe(200); const admin = (await signedIn.json()).user; expect(admin.role).toBe('Admin');
   await page.getByRole('link', { name: 'Provision a new account' }).click();
   await page.getByLabel('Username (required)', { exact: true }).fill(username); await page.getByLabel('Password (required)', { exact: true }).fill(password);
   const create = response('/api/users', 'POST'); await page.getByRole('button', { name: 'Create account', exact: true }).click(); const created = await create; expect(created.status()).toBe(201); const account = await created.json(); expect(account.username).toBe(username);
-  const detail = response(`/api/users/${account.id}`); await page.getByRole('link', { name: 'View created account' }).click(); expect(await (await detail).json()).toEqual(account);
+  const detail = response(`/api/users/${account.id}`); await page.getByRole('link', { name: 'View created account' }).click(); const detailResponse = await detail; expect(detailResponse.status()).toBe(200); expect(await detailResponse.json()).toEqual(account);
   await page.getByLabel('City', { exact: true }).fill(city);
   const edit = response(`/api/users/${account.id}`, 'PUT'); await page.getByRole('button', { name: 'Save changes', exact: true }).click(); const edited = await edit; expect(edited.status()).toBe(200); expect((await edited.json()).city).toBe(city);
   const own = response('/api/profile'); await page.getByRole('link', { name: 'Profile', exact: true }).click(); expect((await own).status()).toBe(200);
@@ -49,12 +53,12 @@ test('real login, account and profile operations match audit rows without events
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await network.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   await page.getByLabel('Page size', { exact: true }).selectOption({ label: '1' });
-  const one = response('/api/logs'); await page.getByRole('button', { name: 'Apply page size' }).click(); const first: AuditPage = await (await one).json(); expect(first.limit).toBe(1); expect(first.skip).toBe(0); expect(first.total).toBe(logs.total); expect(first.items).toEqual(logs.items.slice(0, 1)); await expect(page).toHaveURL(/limit=1&skip=0/);
-  const next = response('/api/logs'); await page.getByRole('button', { name: 'Next page' }).click(); const second: AuditPage = await (await next).json(); expect(second.skip).toBe(1); expect(second.total).toBe(logs.total); expect(second.items).toEqual(logs.items.slice(1, 2)); await expect(page).toHaveURL(/limit=1&skip=1/); await expect(page.locator(`tr[data-record-id="${second.items[0].id}"]`)).toBeVisible();
-  const previous = response('/api/logs'); await page.getByRole('button', { name: 'Previous page' }).click(); expect(await (await previous).json()).toEqual(first);
-  const reset = response('/api/logs'); await page.getByRole('button', { name: 'Reset pagination' }).click(); expect(await (await reset).json()).toEqual(logs);
+  const one = response('/api/logs'); await page.getByRole('button', { name: 'Apply page size' }).click(); const oneResponse = await one; expect(oneResponse.status()).toBe(200); const first: AuditPage = await oneResponse.json(); expect(first.limit).toBe(1); expect(first.skip).toBe(0); expect(first.total).toBe(logs.total); expect(first.items).toEqual(logs.items.slice(0, 1)); await expect(page).toHaveURL(/limit=1&skip=0/);
+  const next = response('/api/logs'); await page.getByRole('button', { name: 'Next page' }).click(); const nextResponse = await next; expect(nextResponse.status()).toBe(200); const second: AuditPage = await nextResponse.json(); expect(second.skip).toBe(1); expect(second.total).toBe(logs.total); expect(second.items).toEqual(logs.items.slice(1, 2)); await expect(page).toHaveURL(/limit=1&skip=1/); await expect(page.locator(`tr[data-record-id="${second.items[0].id}"]`)).toBeVisible();
+  const previous = response('/api/logs'); await page.getByRole('button', { name: 'Previous page' }).click(); const previousResponse = await previous; expect(previousResponse.status()).toBe(200); expect(await previousResponse.json()).toEqual(first);
+  const reset = response('/api/logs'); await page.getByRole('button', { name: 'Reset pagination' }).click(); const resetResponse = await reset; expect(resetResponse.status()).toBe(200); expect(await resetResponse.json()).toEqual(logs);
   await page.getByRole('link', { name: 'Back to session', exact: true }).click();
-  const revisit = response('/api/logs'); await page.getByRole('link', { name: 'Review audit records' }).click(); expect(await (await revisit).json()).toEqual(logs);
+  const revisit = response('/api/logs'); await page.getByRole('link', { name: 'Review audit records' }).click(); const revisitResponse = await revisit; expect(revisitResponse.status()).toBe(200); expect(await revisitResponse.json()).toEqual(logs);
   expect(mutations).toEqual(beforeReview);
   await page.getByRole('region', { name: 'Audit records' }).focus(); await page.keyboard.press('ArrowRight');
   await page.screenshot({ path: testInfo.outputPath(`audit-${testInfo.project.name}.png`), fullPage: true });

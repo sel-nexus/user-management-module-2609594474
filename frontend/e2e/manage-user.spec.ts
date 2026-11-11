@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { test, expect, adminPassword } from './fixtures';
 
 /** Prove lifecycle persistence through actual click navigation and HTTP on desktop and mobile projects. */
-test('login → create → grid → detail → edit → deactivate → persisted inactive → rejected login', async ({ page, browserErrors }) => {
+test('login → create → grid → detail → edit → deactivate → persisted inactive → rejected login', async ({ page, browserErrors, expectedHttpError }) => {
   const username = `manage-${randomBytes(8).toString('hex')}`;
   const renamed = `${username}-edited`;
   const password = randomBytes(24).toString('base64url');
@@ -74,13 +74,18 @@ test('login → create → grid → detail → edit → deactivate → persisted
   const inactiveList = page.waitForResponse(r => new URL(r.url()).pathname === '/api/users' && r.request().method() === 'GET');
   await page.getByRole('button', { name: 'Apply filters' }).click(); const persisted = await inactiveList; expect(persisted.status()).toBe(200); expect((await persisted.json()).items).toEqual([inactive]);
   const revisit = page.waitForResponse(r => new URL(r.url()).pathname === path && r.request().method() === 'GET');
-  await page.getByRole('link', { name: renamed, exact: true }).click(); expect(await (await revisit).json()).toEqual(inactive); await expect(page.getByTestId('account-status')).toHaveText('Inactive');
+  await page.getByRole('link', { name: renamed, exact: true }).click(); const revisited = await revisit; expect(revisited.status()).toBe(200); expect(await revisited.json()).toEqual(inactive); await expect(page.getByTestId('account-status')).toHaveText('Inactive');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('link', { name: 'Back to session' }).click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).first().click();
   await page.getByLabel('Username', { exact: true }).fill(renamed); await page.getByLabel('Password', { exact: true }).fill(password);
-  const rejectedLogin = page.waitForResponse(r => r.url().endsWith('/api/login') && r.request().method() === 'POST');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click(); const rejected = await rejectedLogin; expect(rejected.status()).toBe(401); expect((await rejected.json()).code).toBe('invalid_credentials');
-  await expect(page.getByRole('alert')).toContainText('Username or password is incorrect'); await expect(page.getByRole('heading', { name: 'Sign in to the register', exact: true })).toBeVisible();
+  await expectedHttpError({ path: '/api/login', method: 'POST', status: 401 }, async () => {
+    const rejectedLogin = page.waitForResponse(r => new URL(r.url()).pathname === '/api/login' && r.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click(); const rejected = await rejectedLogin;
+    expect(rejected.status()).toBe(401); expect((await rejected.json()).code).toBe('invalid_credentials');
+    await expect(page.getByRole('alert')).toContainText('Username or password is incorrect');
+    await expect(page.getByRole('heading', { name: 'Sign in to the register', exact: true })).toBeVisible();
+    return rejected;
+  });
   expect(browserErrors).toEqual([]); await network.detach();
 });

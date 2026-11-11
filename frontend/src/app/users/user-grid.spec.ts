@@ -63,6 +63,37 @@ describe('User discovery grid', () => {
     params.next(convertToParamMap({ limit: '20', skip: '0', search: '.*', country: 'UK', education: 'Degree', is_active: 'false' }));
     const request = pending(); expect(request.request.params.get('is_active')).toBe('false'); expect(request.request.params.get('search')).toBe('.*'); request.flush(response);
   });
+  it('ignores ids outside the visible page without changing an existing row selection', () => {
+    populate();
+    fixture.componentInstance.toggle('invalid-row-id'); fixture.componentInstance.toggle('000000000000000000000003'); fixture.detectChanges();
+    expect(root.textContent).toContain('0 selected'); expect(check('Select alpha').checked).toBeFalse(); expect(check('Select bravo').checked).toBeFalse();
+    expect(check('Select all users on this page').checked).toBeFalse(); expect(check('Select all users on this page').indeterminate).toBeFalse();
+    check('Select alpha').click();
+    fixture.componentInstance.toggle('000000000000000000000003'); fixture.detectChanges();
+    expect(root.textContent).toContain('1 selected'); expect(check('Select alpha').checked).toBeTrue(); expect(check('Select bravo').checked).toBeFalse();
+    expect(check('Select all users on this page').checked).toBeFalse(); expect(check('Select all users on this page').indeterminate).toBeTrue();
+    expect(navigate).not.toHaveBeenCalled(); http.expectNone(() => true);
+  });
+  it('individually deselects rows and updates the selected count and select-all state', () => {
+    populate(); check('Select all users on this page').click(); fixture.detectChanges();
+    expect(root.textContent).toContain('2 selected'); expect(check('Select all users on this page').checked).toBeTrue();
+    check('Select alpha').click(); fixture.detectChanges();
+    expect(check('Select alpha').checked).toBeFalse(); expect(check('Select bravo').checked).toBeTrue(); expect(root.textContent).toContain('1 selected');
+    expect(check('Select all users on this page').checked).toBeFalse(); expect(check('Select all users on this page').indeterminate).toBeTrue();
+    check('Select bravo').click(); fixture.detectChanges();
+    expect(check('Select bravo').checked).toBeFalse(); expect(root.textContent).toContain('0 selected');
+    expect(check('Select all users on this page').checked).toBeFalse(); expect(check('Select all users on this page').indeterminate).toBeFalse();
+    expect(navigate).not.toHaveBeenCalled(); http.expectNone(() => true);
+  });
+  it('catches rejected navigation and shows generic visible feedback without leaking rejection details', async () => {
+    populate(); navigate.and.rejectWith(new Error('secret router value <script>alert(1)</script>'));
+    input('users-search', 'new criteria'); submit();
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(navigate).toHaveBeenCalledWith([], jasmine.objectContaining({ queryParams: jasmine.objectContaining({ search: 'new criteria', skip: 0 }) }));
+    expect(root.querySelector('[role="alert"]')?.textContent?.trim()).toBe('Navigation failed. Please try again.');
+    expect(root.textContent).not.toContain('secret router value'); expect(root.querySelector('script')).toBeNull();
+    expect(fixture.componentInstance.query.search).toBeUndefined(); http.expectNone(() => true);
+  });
   it('restores all bookmarked criteria and page size on Back/Forward and clears selection immediately', () => {
     populate(); check('Select alpha').click(); fixture.detectChanges();
     params.next(convertToParamMap({ limit: '7', skip: '14', search: 'LONDON', country: 'UK', education: 'Degree', is_active: 'true', sort: 'city', direction: 'desc' })); fixture.detectChanges();

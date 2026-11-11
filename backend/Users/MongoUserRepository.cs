@@ -63,7 +63,7 @@ public sealed class MongoUserRepository(MongoContext context) : IUserRepository
     {
         if (changes.Count == 0) return await FindByIdAsync(id, ct);
         var u = Builders<UserDocument>.Update;
-        var updates = new List<UpdateDefinition<UserDocument>> { u.Set(x => x.UpdatedAt, DateTime.UtcNow) };
+        var updates = new List<UpdateDefinition<UserDocument>> { u.Set(x => x.UpdatedAt, UserDocument.CanonicalizeTimestamp(DateTime.UtcNow)) };
         foreach (var (name, value) in changes)
             updates.Add(name switch
             {
@@ -88,7 +88,7 @@ public sealed class MongoUserRepository(MongoContext context) : IUserRepository
         var filter = Builders<UserDocument>.Filter.Where(x => x.Id == id && x.IsActive && x.Role == role);
         if (changes.Count == 0) return await context.Users.Find(filter).FirstOrDefaultAsync(ct);
         var u = Builders<UserDocument>.Update;
-        var updates = new List<UpdateDefinition<UserDocument>> { u.Set(x => x.UpdatedAt, DateTime.UtcNow) };
+        var updates = new List<UpdateDefinition<UserDocument>> { u.Set(x => x.UpdatedAt, UserDocument.CanonicalizeTimestamp(DateTime.UtcNow)) };
         foreach (var (name, value) in changes)
             updates.Add(name switch
             {
@@ -103,14 +103,14 @@ public sealed class MongoUserRepository(MongoContext context) : IUserRepository
     public async Task<bool> ChangePasswordAsync(ObjectId id, string role, string expectedHash, string newHash, CancellationToken ct)
     {
         var result = await context.Users.UpdateOneAsync(x => x.Id == id && x.IsActive && x.Role == role && x.PasswordHash == expectedHash,
-            Builders<UserDocument>.Update.Set(x => x.PasswordHash, newHash).Set(x => x.UpdatedAt, DateTime.UtcNow), cancellationToken: ct);
+            Builders<UserDocument>.Update.Set(x => x.PasswordHash, newHash).Set(x => x.UpdatedAt, UserDocument.CanonicalizeTimestamp(DateTime.UtcNow)), cancellationToken: ct);
         return result.ModifiedCount == 1;
     }
     // Change activity once without replacing credentials/profile or moving repeat-delete timestamps.
     public async Task<UserDocument?> DeactivateAsync(ObjectId id, CancellationToken ct)
     {
         var changed = await context.Users.FindOneAndUpdateAsync(x => x.Id == id && x.IsActive,
-            Builders<UserDocument>.Update.Set(x => x.IsActive, false).Set(x => x.UpdatedAt, DateTime.UtcNow),
+            Builders<UserDocument>.Update.Set(x => x.IsActive, false).Set(x => x.UpdatedAt, UserDocument.CanonicalizeTimestamp(DateTime.UtcNow)),
             new FindOneAndUpdateOptions<UserDocument> { ReturnDocument = ReturnDocument.After }, ct);
         return changed ?? await FindByIdAsync(id, ct);
     }

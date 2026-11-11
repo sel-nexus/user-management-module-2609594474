@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Driver;
+using MongoDB.Bson;
 using UserManagement.Api.Auth;
 using UserManagement.Api.Audit;
 using UserManagement.Api.Common;
@@ -120,5 +121,132 @@ public sealed class AuthenticationTests : IAsyncLifetime
     {
         var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["Jwt:Secret"]=new string('x',64)+"change-me", ["Jwt:Issuer"]="issuer", ["Jwt:Audience"]="audience", ["Jwt:ExpiryMinutes"]="30" }).Build();
         Assert.Throws<InvalidOperationException>(() => new TokenService(config));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    [InlineData("ab")]
+    [InlineData("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklm")]
+    public async Task Bootstrap_invalid_username_fails_startup_without_changing_accounts(string? username)
+    {
+        var existing = await app.SeedAsync("User", false);
+        var before = (await app.Mongo.Users.Find(x => x.Id == existing.Id).SingleAsync()).ToBsonDocument();
+        var config = BootstrapConfig(username, "Bootstrap-password-123");
+        var setup = new DatabaseSetup(app.Mongo, app.Services.GetRequiredService<IUserRepository>(), new PasswordHasher(), config);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => setup.InitializeAsync(default));
+
+        Assert.Equal(before, (await app.Mongo.Users.Find(x => x.Id == existing.Id).SingleAsync()).ToBsonDocument());
+        Assert.Equal(1, await app.Mongo.Users.CountDocumentsAsync(Builders<UserDocument>.Filter.Empty));
+        Assert.Equal(0, await app.Mongo.Logs.CountDocumentsAsync(Builders<LogDocument>.Filter.Empty));
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("short", false)]
+    [InlineData("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstu", false)]
+    [InlineData("REPLACE-WITH-random-password", true)]
+    public async Task Bootstrap_invalid_password_fails_startup_without_creating_or_mutating_accounts(string? password, bool placeholder)
+    {
+        var existing = await app.SeedAsync("User", false);
+        var before = (await app.Mongo.Users.Find(x => x.Id == existing.Id).SingleAsync()).ToBsonDocument();
+        var setup = new DatabaseSetup(app.Mongo, app.Services.GetRequiredService<IUserRepository>(), new PasswordHasher(), BootstrapConfig("new-bootstrap-admin", password));
+
+        if (placeholder)
+            await Assert.ThrowsAsync<InvalidOperationException>(() => setup.InitializeAsync(default));
+        else
+        {
+            var error = await Assert.ThrowsAsync<ApiException>(() => setup.InitializeAsync(default));
+            Assert.Equal(400, error.Status);
+            Assert.Equal("validation_error", error.Code);
+        }
+
+        Assert.Null(await app.Mongo.Users.Find(x => x.Username == "new-bootstrap-admin").FirstOrDefaultAsync());
+        Assert.Equal(before, (await app.Mongo.Users.Find(x => x.Id == existing.Id).SingleAsync()).ToBsonDocument());
+        Assert.Equal(1, await app.Mongo.Users.CountDocumentsAsync(Builders<UserDocument>.Filter.Empty));
+        Assert.Equal(0, await app.Mongo.Logs.CountDocumentsAsync(Builders<LogDocument>.Filter.Empty));
+    }
+
+    [Fact]
+    public async Task Bootstrap_disabled_ignores_invalid_credentials_and_preserves_accounts()
+    {
+        var existing = await app.SeedAsync();
+        var before = (await app.Mongo.Users.Find(x => x.Id == existing.Id).SingleAsync()).ToBsonDocument();
+        var config = BootstrapConfig("ab", "short");
+        config["Bootstrap:Enabled"] = "false";
+
+        await new DatabaseSetup(app.Mongo, app.Services.GetRequiredService<IUserRepository>(), new PasswordHasher(), config).InitializeAsync(default);
+
+        Assert.Equal(before, (await app.Mongo.Users.Find(x => x.Id == existing.Id).SingleAsync()).ToBsonDocument());
+        Assert.Equal(1, await app.Mongo.Users.CountDocumentsAsync(Builders<UserDocument>.Filter.Empty));
+    }
+
+    [Fact]
+    public async Task Bootstrap_concurrent_initializations_handle_real_unique_conflict_and_preserve_winner()
+    {
+        var existing = await app.SeedAsync("User", false);
+        var before = (await app.Mongo.Users.Find(x => x.Id == existing.Id).SingleAsync()).ToBsonDocument();
+        var repository = new BootstrapRaceRepository(app.Services.GetRequiredService<IUserRepository>());
+        var first = new DatabaseSetup(app.Mongo, repository, new PasswordHasher(), BootstrapConfig("race-admin", "First-bootstrap-password"));
+        var second = new DatabaseSetup(app.Mongo, repository, new PasswordHasher(), BootstrapConfig("race-admin", "Second-bootstrap-password"));
+
+        // Both real reads observe absence before either real Mongo insert proceeds.
+        await Task.WhenAll(first.InitializeAsync(default), second.InitializeAsync(default)).WaitAsync(TimeSpan.FromSeconds(30));
+
+        var winner = Assert.IsType<UserDocument>(repository.Winner);
+        var saved = await app.Mongo.Users.Find(x => x.Username == "race-admin").SingleAsync();
+        Assert.Equal(winner.Id, saved.Id);
+        Assert.Equal(winner.PasswordHash, saved.PasswordHash);
+        Assert.Equal("Admin", saved.Role);
+        Assert.True(saved.IsActive);
+        Assert.True(new PasswordHasher().Verify("First-bootstrap-password", saved.PasswordHash)
+            ^ new PasswordHasher().Verify("Second-bootstrap-password", saved.PasswordHash));
+        Assert.Equal(1, repository.UniqueConflicts);
+        var winnerBefore = saved.ToBsonDocument();
+        await new DatabaseSetup(app.Mongo, app.Services.GetRequiredService<IUserRepository>(), new PasswordHasher(), BootstrapConfig("race-admin", "Replacement-password-123")).InitializeAsync(default);
+        Assert.Equal(winnerBefore, (await app.Mongo.Users.Find(x => x.Username == "race-admin").SingleAsync()).ToBsonDocument());
+        Assert.Equal(before, (await app.Mongo.Users.Find(x => x.Id == existing.Id).SingleAsync()).ToBsonDocument());
+        Assert.Equal(2, await app.Mongo.Users.CountDocumentsAsync(Builders<UserDocument>.Filter.Empty));
+    }
+
+    private static IConfigurationRoot BootstrapConfig(string? username, string? password) =>
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Bootstrap:Enabled"] = "true", ["Bootstrap:Username"] = username, ["Bootstrap:Password"] = password
+        }).Build();
+
+    // Scheduling adapter only: every read/write delegates to the real Mongo repository.
+    private sealed class BootstrapRaceRepository(IUserRepository inner) : IUserRepository
+    {
+        private readonly TaskCompletionSource bothRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int reads;
+        private int uniqueConflicts;
+        public UserDocument? Winner { get; private set; }
+        public int UniqueConflicts => uniqueConflicts;
+        public async Task<UserDocument?> FindByUsernameAsync(string username, CancellationToken ct)
+        {
+            var result = await inner.FindByUsernameAsync(username, ct);
+            if (Interlocked.Increment(ref reads) == 2) bothRead.TrySetResult();
+            await bothRead.Task.WaitAsync(TimeSpan.FromSeconds(15), ct);
+            return result;
+        }
+        public async Task InsertAsync(UserDocument user, CancellationToken ct)
+        {
+            try { await inner.InsertAsync(user, ct); Winner = user; }
+            catch (ApiException error) when (error.Status == 409)
+            {
+                Interlocked.Increment(ref uniqueConflicts);
+                throw;
+            }
+        }
+        public Task<UserDocument?> FindByIdAsync(MongoDB.Bson.ObjectId id, CancellationToken ct) => inner.FindByIdAsync(id, ct);
+        public Task<UserManagement.Api.Dashboard.PopulationSummary> SummarizeAsync(CancellationToken ct) => inner.SummarizeAsync(ct);
+        public Task<UserManagement.Api.Discovery.UserListResponse> ListAsync(UserManagement.Api.Discovery.UserListQuery query, CancellationToken ct) => inner.ListAsync(query, ct);
+        public Task<UserDocument?> UpdateAsync(MongoDB.Bson.ObjectId id, IReadOnlyDictionary<string, string?> changes, CancellationToken ct) => inner.UpdateAsync(id, changes, ct);
+        public Task<UserDocument?> UpdateProfileAsync(MongoDB.Bson.ObjectId id, string role, IReadOnlyDictionary<string, string?> changes, CancellationToken ct) => inner.UpdateProfileAsync(id, role, changes, ct);
+        public Task<bool> ChangePasswordAsync(MongoDB.Bson.ObjectId id, string role, string expectedHash, string newHash, CancellationToken ct) => inner.ChangePasswordAsync(id, role, expectedHash, newHash, ct);
+        public Task<UserDocument?> DeactivateAsync(MongoDB.Bson.ObjectId id, CancellationToken ct) => inner.DeactivateAsync(id, ct);
     }
 }

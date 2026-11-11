@@ -4,6 +4,15 @@ import { test, expect, adminPassword } from './fixtures';
 
 /** Match only real GET discovery responses, never create or another API feature. */
 const listResponse = (response: Response): boolean => new URL(response.url()).pathname === '/api/users' && response.request().method() === 'GET';
+/** Finish the real grid response and wait for its backend usernames before another activation. */
+async function assertGridReady(page: Page, response: Response): Promise<void> {
+  expect(response.status()).toBe(200);
+  const data: { items: { username: string }[]; limit: number } = await response.json();
+  expect(data.limit).toBe(20);
+  expect(data.items.length).toBeGreaterThan(0);
+  await expect(page.getByRole('status').filter({ hasText: 'Loading accounts' })).toHaveCount(0);
+  for (const user of data.items) await expect(page.getByRole('cell', { name: user.username, exact: true })).toBeVisible();
+}
 /** Navigate through the real login form and assert that the backend issued an Admin session. */
 async function login(page: Page): Promise<void> {
   await page.getByLabel('Username', { exact: true }).fill('e2e-admin');
@@ -21,11 +30,13 @@ async function apply(page: Page): Promise<{ items: { id: string; username: strin
 }
 
 /** Prove real login, create, discover, filter, sort, page and selection against persisted data on both configured viewports. */
-test('Admin discovers persisted accounts through real filters, sorting and paging without bulk/export', async ({ page, browserErrors }) => {
+test('Admin discovers persisted accounts through real filters, sorting and paging without bulk/export', async ({ page, browserErrors, expectedOfflineError }) => {
   const prefix = `discover-${randomBytes(6).toString('hex')}`;
   await page.goto('/'); await page.getByRole('link', { name: 'Go to sign in' }).click(); await login(page);
   // Provision through the existing UI, not a fixture repository or mocked API response.
+  const provisionGrid = page.waitForResponse(listResponse);
   await page.getByRole('link', { name: 'Users', exact: true }).click();
+  await assertGridReady(page, await provisionGrid);
   await page.getByRole('link', { name: 'Create account', exact: true }).click();
   const created: { id: string; username: string; city: string; country: string; education: string }[] = [];
   for (const suffix of ['a', 'b']) {
@@ -46,6 +57,7 @@ test('Admin discovers persisted accounts through real filters, sorting and pagin
   await page.getByRole('link', { name: 'Users', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Loading accounts' })).toBeVisible();
   const first = await initial; expect(first.status()).toBe(200); expect((await first.json()).limit).toBe(20);
+  await assertGridReady(page, first);
   await network.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible();
   await page.getByLabel('Search username or city', { exact: true }).fill(prefix.toUpperCase());
@@ -91,20 +103,23 @@ test('Admin discovers persisted accounts through real filters, sorting and pagin
   const cleared = page.waitForResponse(listResponse); await page.getByRole('button', { name: 'Clear filters', exact: true }).click(); expect((await (await cleared).json()).limit).toBe(20); await expect(page.getByLabel('Search username or city', { exact: true })).toHaveValue('');
   // Cause an actual network outage, never a mocked API response, then prove explicit error and retry.
   await network.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
-  await page.getByRole('button', { name: 'Sort by city', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Accounts are unavailable');
-  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeEnabled();
-  await expect(page.getByRole('cell', { name: created[0].username, exact: true })).toHaveCount(0);
-  // Classify only the resource failure from the proven offline request; retain all application exceptions.
-  const offlineResource = /^Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/;
-  await expect.poll(() => browserErrors.filter(error => offlineResource.test(error)).length).toBeGreaterThan(0);
-  for (let i = browserErrors.length - 1; i >= 0; i--) if (offlineResource.test(browserErrors[i])) browserErrors.splice(i, 1);
+  await expectedOfflineError({ path: '/api/users', method: 'GET', count: 1 }, async () => {
+    const [failed] = await Promise.all([
+      page.waitForEvent('requestfailed', request => new URL(request.url()).pathname === '/api/users' && request.method() === 'GET'),
+      page.getByRole('button', { name: 'Sort by city', exact: true }).click()
+    ]);
+    await expect(page.getByRole('alert')).toContainText('Accounts are unavailable');
+    await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeEnabled();
+    await expect(page.getByRole('cell', { name: created[0].username, exact: true })).toHaveCount(0);
+    return failed;
+  });
   await network.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   const retry = page.waitForResponse(listResponse); await page.getByRole('button', { name: 'Retry', exact: true }).click(); expect((await retry).status()).toBe(200);
   await expect(page.getByRole('alert')).toHaveCount(0);
   // A fresh authenticated session re-reads the same persisted BSON identities and profiles.
   await page.getByRole('button', { name: 'Sign out', exact: true }).first().click(); await login(page);
   const revisit = page.waitForResponse(listResponse); await page.getByRole('link', { name: 'Users', exact: true }).click(); expect((await revisit).status()).toBe(200);
+  await assertGridReady(page, await revisit);
   await page.getByLabel('Search username or city', { exact: true }).fill(prefix); const persisted = await apply(page); expect(persisted.items.map(u => u.id)).toEqual(created.map(u => u.id));
   expect(persisted.items.map(u => u.city)).toEqual(created.map(u => u.city)); expect(unsupported).toEqual([]); expect(browserErrors).toEqual([]);
   await network.detach();

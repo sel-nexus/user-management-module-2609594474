@@ -151,6 +151,32 @@ public sealed class ProfileTests : IAsyncLifetime
         Assert.Single(outcomes, x => x); Assert.Equal(outcomes[0] ? one : two, (await Saved(user.Id)).PasswordHash);
     }
     [Fact]
+    public async Task Service_password_change_losing_verified_hash_cas_preserves_winner_and_audits_failure_only()
+    {
+        var user = await app.SeedAsync(); var hasher = new PasswordHasher();
+        var winnerHash = hasher.Hash("Winner-password-123!"); BsonDocument? winner = null;
+        var realRepo = new MongoUserRepository(app.Mongo);
+        var scheduledRepo = new ProfilePasswordRaceRepository(realRepo, async (id, role, expectedHash, newHash, ct) =>
+        {
+            // This seam is reached only after the service verified the original password and hashed the proposal.
+            Assert.Equal(user.Id, id); Assert.Equal(user.Role, role); Assert.Equal(user.PasswordHash, expectedHash);
+            Assert.True(hasher.Verify("Loser-password-123!", newHash));
+            Assert.True(await realRepo.ChangePasswordAsync(id, role, expectedHash, winnerHash, ct));
+            winner = (await Saved(id)).ToBsonDocument();
+        });
+        var service = new ProfileService(scheduledRepo, hasher, app.Services.GetRequiredService<IAuditWriter>());
+        var error = await Assert.ThrowsAsync<ApiException>(() => service.ChangePasswordAsync(Principal(user), new("Test-password-123!", "Loser-password-123!"), default));
+        Assert.Equal(400, error.Status); Assert.Equal("password_change_rejected", error.Code);
+        Assert.Equal("Password change could not be completed. Check your current password and retry.", error.Message);
+        Assert.NotNull(winner); var saved = await Saved(user.Id);
+        Assert.Equal(winnerHash, saved.PasswordHash); Assert.Equal(winner, saved.ToBsonDocument());
+        Assert.True(hasher.Verify("Winner-password-123!", saved.PasswordHash));
+        Assert.False(hasher.Verify("Test-password-123!", saved.PasswordHash)); Assert.False(hasher.Verify("Loser-password-123!", saved.PasswordHash));
+        var log = Assert.Single(await app.Mongo.Logs.Find(Builders<LogDocument>.Filter.Empty).ToListAsync());
+        Assert.Equal(user.Id, log.UserId); Assert.Equal("change_password", log.Action); Assert.Equal("failure", log.Status);
+        Assert.Equal(new[] { "_id", "action", "status", "timestamp", "user_id" }, log.ToBsonDocument().Names.OrderBy(x => x));
+    }
+    [Fact]
     public async Task Damaged_hash_fails_closed_and_same_password_change_still_uses_fresh_salt()
     {
         var user = await app.SeedAsync(); var principal = Principal(user);
@@ -182,4 +208,22 @@ public sealed class ProfileTests : IAsyncLifetime
         await Assert.ThrowsAnyAsync<TimeoutException>(() => Call(unavailable, default));
         Assert.Equal(before.ToBsonDocument(), (await Saved(user.Id)).ToBsonDocument()); Assert.Equal(0, await app.Mongo.Logs.CountDocumentsAsync(x => x.Status == "success"));
     }
+}
+
+// Schedule a competing write at the service CAS boundary; every persistence operation still uses real Mongo.
+internal sealed class ProfilePasswordRaceRepository(MongoUserRepository inner, Func<ObjectId, string, string, string, CancellationToken, Task> beforePasswordChange) : IUserRepository
+{
+    public Task<UserDocument?> FindByUsernameAsync(string username, CancellationToken ct) => inner.FindByUsernameAsync(username, ct);
+    public Task<UserDocument?> FindByIdAsync(ObjectId id, CancellationToken ct) => inner.FindByIdAsync(id, ct);
+    public Task<UserManagement.Api.Dashboard.PopulationSummary> SummarizeAsync(CancellationToken ct) => inner.SummarizeAsync(ct);
+    public Task<UserManagement.Api.Discovery.UserListResponse> ListAsync(UserManagement.Api.Discovery.UserListQuery query, CancellationToken ct) => inner.ListAsync(query, ct);
+    public Task InsertAsync(UserDocument user, CancellationToken ct) => inner.InsertAsync(user, ct);
+    public Task<UserDocument?> UpdateAsync(ObjectId id, IReadOnlyDictionary<string, string?> changes, CancellationToken ct) => inner.UpdateAsync(id, changes, ct);
+    public Task<UserDocument?> UpdateProfileAsync(ObjectId id, string role, IReadOnlyDictionary<string, string?> changes, CancellationToken ct) => inner.UpdateProfileAsync(id, role, changes, ct);
+    public async Task<bool> ChangePasswordAsync(ObjectId id, string role, string expectedHash, string newHash, CancellationToken ct)
+    {
+        await beforePasswordChange(id, role, expectedHash, newHash, ct);
+        return await inner.ChangePasswordAsync(id, role, expectedHash, newHash, ct);
+    }
+    public Task<UserDocument?> DeactivateAsync(ObjectId id, CancellationToken ct) => inner.DeactivateAsync(id, ct);
 }

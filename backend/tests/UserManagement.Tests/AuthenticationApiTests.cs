@@ -1,6 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Sockets;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
+using UserManagement.Api.Common;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -32,6 +36,51 @@ public sealed class AuthenticationApiTests : IAsyncLifetime
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", result.AccessToken);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/auth-probe/admin")).StatusCode);
         var health = await client.GetAsync("/api/health"); Assert.Equal(HttpStatusCode.OK, health.StatusCode); Assert.Contains("healthy", await health.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Anonymous_health_returns_safe_503_problem_when_real_mongo_ping_is_unreachable()
+    {
+        // Reserve a loopback port without listening so no Mongo server can answer it.
+        using var unavailableEndpoint = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        unavailableEndpoint.ExclusiveAddressUse = true;
+        unavailableEndpoint.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        var endpoint = (IPEndPoint)unavailableEndpoint.LocalEndPoint!;
+        var uri = $"mongodb://127.0.0.1:{endpoint.Port}";
+        var outageContext = new MongoContext(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Mongo:Uri"] = uri, ["Mongo:Database"] = app.DatabaseName
+        }).Build());
+
+        // Replace only controller activation; startup/index creation still use the real fixture database.
+        using var outageApp = app.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddControllers().AddControllersAsServices();
+            services.AddTransient<HealthController>(_ => new HealthController(outageContext));
+        }));
+        using var client = outageApp.CreateClient();
+        var startupContext = outageApp.Services.GetRequiredService<MongoContext>();
+        Assert.NotSame(outageContext, startupContext);
+        await startupContext.PingAsync(CancellationToken.None);
+        Assert.Null(client.DefaultRequestHeaders.Authorization);
+
+        using var response = await client.GetAsync("/api/health");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var text = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(text);
+        var problem = document.RootElement;
+        Assert.Equal(503, problem.GetProperty("status").GetInt32());
+        Assert.Equal("Service unavailable", problem.GetProperty("title").GetString());
+        Assert.Equal("Storage is unavailable. Try again.", problem.GetProperty("detail").GetString());
+        Assert.Equal("database_unavailable", problem.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("traceId").GetString()));
+        Assert.All(problem.EnumerateObject(), property =>
+            Assert.Contains(property.Name, new[] { "type", "title", "status", "detail", "instance", "code", "traceId" }));
+        Assert.DoesNotContain(uri, text);
+        Assert.DoesNotContain("mongodb://", text);
+        Assert.DoesNotContain("127.0.0.1", text);
+        Assert.DoesNotContain("healthy", text);
     }
 
     [Theory]
