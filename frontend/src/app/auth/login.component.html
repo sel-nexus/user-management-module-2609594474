@@ -1,0 +1,15 @@
+<section class="auth-panel" aria-labelledby="login-title">
+  <p class="eyebrow">Account access</p><h1 id="login-title">Sign in to the register</h1>
+  <p class="muted">Use the account provisioned by your administrator.</p>
+  <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="pending">
+    <label for="username">Username</label>
+    <input id="username" formControlName="username" autocomplete="username" aria-required="true" [attr.aria-invalid]="form.controls.username.touched && form.controls.username.invalid" aria-describedby="username-help">
+    <p id="username-help" class="field-help" [attr.role]="form.controls.username.touched && form.controls.username.invalid ? 'alert' : null">Username must be 3–64 characters.</p>
+    <label for="password">Password</label>
+    <input id="password" type="password" formControlName="password" autocomplete="current-password" aria-required="true" [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid" aria-describedby="password-help">
+    <p id="password-help" class="field-help" [attr.role]="form.controls.password.touched && form.controls.password.invalid ? 'alert' : null">Password must be 12–72 UTF-8 bytes.</p>
+    <app-feedback [message]="error" [error]="true" />
+    <button class="primary" type="submit" [disabled]="pending">{{ pending ? 'Signing in…' : 'Sign in' }}</button>
+  </form>
+  <a routerLink="/forgot-password">Forgot password?</a>
+</section>

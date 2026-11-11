@@ -1,0 +1,36 @@
+import { test, expect, adminPassword } from './fixtures';
+/** Prove UI navigation, real failed/successful login, backend content, logout and recovery non-operation. */
+test('entry → failure → recovery → successful login → logout stays honest on desktop and mobile', async ({ page, browserErrors }, testInfo) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: /A clear register/ })).toBeVisible();
+  await page.getByRole('link', { name: 'Go to sign in' }).click();
+  await page.getByLabel('Username', { exact: true }).fill('e2e-admin');
+  await page.getByLabel('Password', { exact: true }).fill('Wrong-password-123!');
+  const failed = page.waitForResponse(response => response.url().endsWith('/api/login') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  expect((await failed).status()).toBe(401);
+  await expect(page.getByRole('alert')).toContainText('Username or password is incorrect.');
+  const recoveryRequests: string[] = [];
+  const capture = (request: import('@playwright/test').Request): void => { if (request.url().includes('/api/')) recoveryRequests.push(request.url()); };
+  page.on('request', capture);
+  await page.getByRole('link', { name: 'Forgot password?' }).click();
+  await expect(page.getByRole('heading', { name: 'Password recovery is not available' })).toBeVisible();
+  await expect(page.getByText(/No recovery request has been sent/)).toBeVisible();
+  await page.getByRole('link', { name: 'Back to sign in' }).click();
+  expect(recoveryRequests).toEqual([]); page.off('request', capture);
+  await page.getByLabel('Username', { exact: true }).fill('e2e-admin');
+  await page.getByLabel('Password', { exact: true }).fill(adminPassword());
+  const successful = page.waitForResponse(response => response.url().endsWith('/api/login') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  const response = await successful; expect(response.status()).toBe(200);
+  const body = await response.json(); expect(body.token_type).toBe('Bearer'); expect(body.user.role).toBe('Admin'); expect(body.user.id).toMatch(/^[0-9a-f]{24}$/); expect(JSON.stringify(body)).not.toContain('password');
+  await expect(page.getByRole('heading', { name: `Signed in as ${body.user.username}` })).toBeVisible();
+  await expect(page.getByText(body.user.role, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))).toEqual({ local: [], session: [] });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('session.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Sign out' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Sign in to the register' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Session', exact: true })).toHaveCount(0);
+  expect(browserErrors).toEqual([]);
+});

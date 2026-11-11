@@ -1,0 +1,7 @@
+<a class="skip-link" href="#main">Skip to content</a>
+<header><a class="brand" routerLink="/">User register</a><nav aria-label="Main navigation">
+  @if (auth.session()) { <a routerLink="/session" routerLinkActive="active" ariaCurrentWhenActive="page">Session</a><button type="button" (click)="auth.logout()">Sign out</button> }
+  @else { <a routerLink="/login" routerLinkActive="active" ariaCurrentWhenActive="page">Sign in</a> }
+</nav></header>
+<main id="main" tabindex="-1"><router-outlet /></main>
+<footer>Account access · User management module</footer>

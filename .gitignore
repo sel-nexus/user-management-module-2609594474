@@ -26,3 +26,5 @@ frontend/playwright-report/
 frontend/evidence/
 *.log
 *.pid
+.pytest_cache/
+.DS_Store

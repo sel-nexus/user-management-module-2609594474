@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UserManagement.Api", "backend\UserManagement.Api.csproj", "{2141CA03-5539-4F86-A83A-1E73B4202A33}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UserManagement.Tests", "backend\tests\UserManagement.Tests\UserManagement.Tests.csproj", "{D5A770F7-0568-4C97-94C0-75EE0139BA17}"
+EndProject
+Global
+  GlobalSection(SolutionConfigurationPlatforms) = preSolution
+    Debug|Any CPU = Debug|Any CPU
+    Release|Any CPU = Release|Any CPU
+  EndGlobalSection
+  GlobalSection(ProjectConfigurationPlatforms) = postSolution
+    {2141CA03-5539-4F86-A83A-1E73B4202A33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {2141CA03-5539-4F86-A83A-1E73B4202A33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {2141CA03-5539-4F86-A83A-1E73B4202A33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {2141CA03-5539-4F86-A83A-1E73B4202A33}.Release|Any CPU.Build.0 = Release|Any CPU
+    {D5A770F7-0568-4C97-94C0-75EE0139BA17}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {D5A770F7-0568-4C97-94C0-75EE0139BA17}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {D5A770F7-0568-4C97-94C0-75EE0139BA17}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {D5A770F7-0568-4C97-94C0-75EE0139BA17}.Release|Any CPU.Build.0 = Release|Any CPU
+  EndGlobalSection
+EndGlobal

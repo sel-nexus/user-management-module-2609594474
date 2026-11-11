@@ -1,0 +1,31 @@
+services:
+  mongo:
+    image: mongo:8.0.17
+    volumes: [mongo_data:/data/db]
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, "quit(db.adminCommand({ping:1}).ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: ./backend
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Mongo__Uri: mongodb://mongo:27017
+      Mongo__Database: ${Mongo__Database:-user_management}
+      Jwt__Secret: ${Jwt__Secret:?Provide a random signing key of at least 64 bytes}
+      Jwt__Issuer: ${Jwt__Issuer:-user-management}
+      Jwt__Audience: ${Jwt__Audience:-user-management-browser}
+      Jwt__ExpiryMinutes: 30
+      Bootstrap__Enabled: ${Bootstrap__Enabled:-false}
+      Bootstrap__Username: ${Bootstrap__Username:-local-admin}
+      Bootstrap__Password: ${Bootstrap__Password:-}
+    depends_on:
+      mongo: {condition: service_healthy}
+  frontend:
+    build: ./frontend
+    environment: {API_UPSTREAM: "http://backend:5080"}
+    ports: ["${FRONTEND_PORT:-8080}:80"]
+    depends_on: [backend]
+volumes:
+  mongo_data:
