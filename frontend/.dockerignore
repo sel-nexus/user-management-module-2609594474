@@ -6,3 +6,5 @@ e2e
 test-results
 playwright-report
 evidence
+
+.env.*
